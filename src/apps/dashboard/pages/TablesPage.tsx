@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import type { TableConfig } from '@shared-types'
+import { useAuthStore } from '@/shared/store/authStore'
 
 interface TableForm {
   name: string
@@ -32,6 +33,7 @@ const STATUS_COLOR: Record<TableConfig['status'], string> = {
 }
 
 export function TablesPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [tables, setTables] = useState<TableConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -41,12 +43,13 @@ export function TablesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, [branchId])
 
   async function load() {
+    if (!branchId) return
     setLoading(true)
     try {
-      const data = await api.get<TableConfig[]>('/api/v1/tables?branchId=default')
+      const data = await api.get<TableConfig[]>(`/api/v1/tables?branchId=${branchId}`)
       setTables(data)
     } catch {
       setTables(MOCK_TABLES)
@@ -89,7 +92,7 @@ export function TablesPage() {
         setTables(ts => ts.map(t => t.id === editId ? { ...t, name: form.name.trim(), capacity: cap } : t))
       } else {
         const created = await api.post<TableConfig>('/api/v1/tables', {
-          branchId: 'default',
+          branchId: branchId ?? '',
           name: form.name.trim(),
           capacity: cap,
           positionX: 0,
@@ -105,7 +108,7 @@ export function TablesPage() {
         } else {
           const mock: TableConfig = {
             id: 'new-' + Date.now(),
-            branchId: 'default',
+            branchId: branchId ?? '',
             name: form.name.trim(),
             capacity: cap,
             positionX: 0,

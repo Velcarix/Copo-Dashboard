@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
+import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment } from '@shared-types'
 import { useCategoryStore, useSortedCategories, CATEGORY_DEFAULTS } from '@/shared/store/categoryStore'
@@ -632,6 +633,7 @@ function ProductModal({
       modifierGroups: product.modifierGroups ?? [],
     }
   )
+  const branchId = useAuthStore(s => s.branchId)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'basic' | 'modifiers' | 'ingredients'>('basic')
@@ -640,10 +642,11 @@ function ProductModal({
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
 
   useEffect(() => {
-    api.get<{ data: InventoryItem[] }>('/api/v1/inventory?branchId=default')
+    if (!branchId) return
+    api.get<{ data: InventoryItem[] }>(`/api/v1/inventory?branchId=${branchId}`)
       .then(res => setInventoryItems(res.data))
       .catch(() => { if (import.meta.env.DEV) setInventoryItems(MOCK_INVENTORY) })
-  }, [])
+  }, [branchId])
 
   function addModifierGroup() {
     const id = uid()
@@ -942,6 +945,7 @@ const MOCK_PRODUCTS: Product[] = [
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function ProductsPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Product | 'new' | null>(null)
@@ -964,24 +968,19 @@ export function ProductsPage() {
   }
 
   useEffect(() => {
-    api.get<{ data: Product[] }>('/api/v1/products?active=all&branchId=default')
+    if (!branchId) return
+    api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
       .then(res => setProducts(res.data))
       .catch(() => { if (import.meta.env.DEV) setProducts(MOCK_PRODUCTS) })
       .finally(() => setLoading(false))
-  }, [])
+  }, [branchId])
 
   async function handleSave(data: Omit<Product, 'id'> & { id?: string }) {
-    if (import.meta.env.DEV) {
-      const id = data.id ?? crypto.randomUUID()
-      const saved: Product = { id, ...data }
-      setProducts(prev => data.id ? prev.map(p => p.id === id ? saved : p) : [...prev, saved])
-      return
-    }
     if (data.id) {
       const res = await api.put<{ data: Product }>(`/api/v1/products/${data.id}`, data)
       setProducts(prev => prev.map(p => p.id === data.id ? res.data : p))
     } else {
-      const res = await api.post<{ data: Product }>('/api/v1/products', { ...data, branchId: 'default' })
+      const res = await api.post<{ data: Product }>('/api/v1/products', { ...data, branchId: branchId ?? '' })
       setProducts(prev => [...prev, res.data])
     }
   }

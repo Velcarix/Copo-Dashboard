@@ -3,6 +3,7 @@ import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
+import { useAuthStore } from '@/shared/store/authStore'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ function formatInventoryRows(rows: InventoryRow[]): Record<string, string | numb
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ReportsPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [tab, setTab] = useState<Tab>('sales')
 
   const [from, setFrom] = useState(() => {
@@ -91,8 +93,8 @@ export function ReportsPage() {
     setLoading(true)
     if (tab === 'sales') {
       Promise.all([
-        api.get<{ data: { data: SalesDay[] } }>(`/api/v1/reports/sales?branchId=default&from=${from}&to=${to}&groupBy=day`),
-        api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?branchId=default&from=${from}&to=${to}&page=${ordersPage}&limit=20`),
+        api.get<{ data: { data: SalesDay[] } }>(`/api/v1/reports/sales?branchId=${branchId}&from=${from}&to=${to}&groupBy=day`),
+        api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?branchId=${branchId}&from=${from}&to=${to}&page=${ordersPage}&limit=20`),
       ])
         .then(([salesRes, ordersRes]) => {
           setSalesDays(salesRes.data.data)
@@ -104,7 +106,7 @@ export function ReportsPage() {
         })
         .finally(() => setLoading(false))
     } else {
-      api.get<{ data: InventoryRow[] }>(`/api/v1/reports/inventory?branchId=default&from=${from}&to=${to}`)
+      api.get<{ data: InventoryRow[] }>(`/api/v1/reports/inventory?branchId=${branchId}&from=${from}&to=${to}`)
         .then(res => setInventory(res.data))
         .catch(() => { if (import.meta.env.DEV) setInventory(MOCK_INVENTORY) })
         .finally(() => setLoading(false))

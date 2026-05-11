@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
+import { useAuthStore } from '@/shared/store/authStore'
 
 interface Invoice {
   id: string
@@ -85,6 +86,7 @@ function formatDate(iso: string) {
 }
 
 export function InvoicesPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -104,7 +106,7 @@ export function InvoicesPage() {
 
   useEffect(() => {
     setLoading(true)
-    api.get<{ data: Invoice[]; total: number }>(`/api/v1/invoices?branchId=default&page=${page}&limit=20`)
+    api.get<{ data: Invoice[]; total: number }>(`/api/v1/invoices?branchId=${branchId}&page=${page}&limit=20`)
       .then(res => { setInvoices(res.data); setTotal(res.total) })
       .catch(() => { if (import.meta.env.DEV) { setInvoices(MOCK_INVOICES); setTotal(MOCK_INVOICES.length) } })
       .finally(() => setLoading(false))
@@ -119,7 +121,7 @@ export function InvoicesPage() {
     setIssueError('')
     try {
       const body = {
-        branchId: 'default',
+        branchId: branchId ?? '',
         orderId: form.orderId || null,
         sessionId: null,
         customer: {

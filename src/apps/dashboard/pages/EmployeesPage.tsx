@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
+import { useAuthStore } from '@/shared/store/authStore'
 
 // DEV mock — in production from auth JWT / settings
 // Only affects whether WAITER role (comandero tablet) is assignable
@@ -159,6 +160,7 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function EmployeesPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading]     = useState(true)
   const [editEmployee, setEditEmployee] = useState<Employee | null | 'new'>(null)
@@ -171,11 +173,12 @@ export function EmployeesPage() {
   const [pinError, setPinError]         = useState('')
 
   useEffect(() => {
-    api.get<{ data: Employee[] }>('/api/v1/employees?branchId=default')
+    if (!branchId) return
+    api.get<{ data: Employee[] }>(`/api/v1/employees?branchId=${branchId}`)
       .then(res => setEmployees(res.data))
       .catch(() => { if (import.meta.env.DEV) setEmployees(MOCK_EMPLOYEES) })
       .finally(() => setLoading(false))
-  }, [])
+  }, [branchId])
 
   function openNew() {
     setForm(emptyForm())
@@ -196,7 +199,7 @@ export function EmployeesPage() {
       name: form.name,
       role: form.role,
       pin: form.pin || undefined,
-      branchId: 'default',
+      branchId: branchId ?? '',
       isShared: form.isShared,
       canSkipShiftOpen: form.canSkipShiftOpen,
       canSkipShiftClose: form.canSkipShiftClose,

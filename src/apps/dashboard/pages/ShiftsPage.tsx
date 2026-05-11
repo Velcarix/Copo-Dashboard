@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { ShiftStatus } from '@shared-types'
+import { useAuthStore } from '@/shared/store/authStore'
 
 interface ShiftRecord {
   id: string
@@ -95,19 +96,21 @@ function DifferenceChip({ diff }: { diff: number | null }) {
 }
 
 export function ShiftsPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [shifts, setShifts] = useState<ShiftRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [rangeDays, setRangeDays] = useState<7 | 14 | 30>(7)
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!branchId) return
     const { from, to } = dateRange(rangeDays)
     setLoading(true)
-    api.get<{ data: ShiftRecord[] }>(`/api/v1/shifts?branchId=default&from=${from}&to=${to}`)
+    api.get<{ data: ShiftRecord[] }>(`/api/v1/shifts?branchId=${branchId}&from=${from}&to=${to}`)
       .then(res => setShifts(res.data))
       .catch(() => { if (import.meta.env.DEV) setShifts(MOCK_SHIFTS) })
       .finally(() => setLoading(false))
-  }, [rangeDays])
+  }, [rangeDays, branchId])
 
   // Aggregate stats
   const closed = shifts.filter(s => s.status !== ShiftStatus.OPEN)

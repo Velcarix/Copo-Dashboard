@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import type { TableConfig } from '@shared-types'
+import { useAuthStore } from '@/shared/store/authStore'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ const MOCK_SECTIONS: SectionConfig[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ComanderoConfigPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [tables, setTables] = useState<TableConfig[]>([])
   const [waiters, setWaiters] = useState<WaiterEmployee[]>([])
   const [sections, setSections] = useState<SectionConfig[]>([])
@@ -57,15 +59,16 @@ export function ComanderoConfigPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
-  useEffect(() => { void loadAll() }, [])
+  useEffect(() => { void loadAll() }, [branchId])
 
   async function loadAll() {
+    if (!branchId) return
     setLoading(true)
     try {
       const [fetchedTables, fetchedWaiters, fetchedSections] = await Promise.all([
-        api.get<TableConfig[]>('/api/v1/tables?branchId=default'),
-        api.get<WaiterEmployee[]>('/api/v1/employees?branchId=default&role=WAITER'),
-        api.get<SectionConfig[]>('/api/v1/sections?branchId=default'),
+        api.get<TableConfig[]>(`/api/v1/tables?branchId=${branchId}`),
+        api.get<WaiterEmployee[]>(`/api/v1/employees?branchId=${branchId}&role=WAITER`),
+        api.get<SectionConfig[]>(`/api/v1/sections?branchId=${branchId}`),
       ])
       setTables(fetchedTables)
       setWaiters(fetchedWaiters)
@@ -112,7 +115,7 @@ export function ComanderoConfigPage() {
 
     const waiter = waiters.find(w => w.id === formWaiterId) ?? null
     const body = {
-      branchId: 'default',
+      branchId: branchId ?? '',
       name: formName.trim(),
       tableIds: formTableIds,
       assignedWaiterId: formWaiterId || null,
@@ -140,7 +143,7 @@ export function ComanderoConfigPage() {
         } else {
           setSections(ss => [...ss, {
             id: 'sec-' + Date.now(),
-            branchId: 'default',
+            branchId: branchId ?? '',
             name: formName.trim(),
             tableIds: formTableIds,
             assignedWaiterId: formWaiterId || null,

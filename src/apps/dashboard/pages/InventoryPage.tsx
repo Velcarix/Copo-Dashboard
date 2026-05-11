@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import React from 'react'
 import { api, ApiError } from '@/shared/lib/api'
+import { useAuthStore } from '@/shared/store/authStore'
 
 interface InventoryItem {
   id: string
@@ -27,6 +28,7 @@ const UNIT_LABELS: Record<string, string> = {
 }
 
 export function InventoryPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [adjustId, setAdjustId] = useState<string | null>(null)
@@ -41,11 +43,12 @@ export function InventoryPage() {
   const [savingNew, setSavingNew] = useState(false)
 
   useEffect(() => {
-    api.get<{ data: InventoryItem[] }>('/api/v1/inventory?branchId=default')
+    if (!branchId) return
+    api.get<{ data: InventoryItem[] }>(`/api/v1/inventory?branchId=${branchId}`)
       .then(res => setItems(res.data))
       .catch(() => { if (import.meta.env.DEV) setItems(MOCK_INVENTORY) })
       .finally(() => setLoading(false))
-  }, [])
+  }, [branchId])
 
   async function handleAdjust(item: InventoryItem) {
     const qty = parseFloat(adjustQty)

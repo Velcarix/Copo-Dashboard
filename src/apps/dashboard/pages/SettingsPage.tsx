@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
+import { useAuthStore } from '@/shared/store/authStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [tab, setTab] = useState<Tab>('general')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -139,12 +141,13 @@ export function SettingsPage() {
   const [cfdi, setCfdi] = useState<CfdiConfig>(MOCK_CFDI)
 
   useEffect(() => {
+    if (!branchId) return
     const endpoints: Record<Tab, string> = {
-      general:  '/api/v1/settings?branchId=default',
-      kitchen:  '/api/v1/settings/kitchen?branchId=default',
-      tables:   '/api/v1/settings/tables?branchId=default',
-      delivery: '/api/v1/settings/delivery?branchId=default',
-      cfdi:     '/api/v1/invoices/config?branchId=default',
+      general:  `/api/v1/settings?branchId=${branchId}`,
+      kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
+      tables:   `/api/v1/settings/tables?branchId=${branchId}`,
+      delivery: `/api/v1/settings/delivery?branchId=${branchId}`,
+      cfdi:     `/api/v1/invoices/config?branchId=${branchId}`,
     }
     const setters: Record<Tab, (d: unknown) => void> = {
       general:  d => setBranch(d as BranchSettings),
@@ -164,11 +167,11 @@ export function SettingsPage() {
     setSaved(false)
 
     const endpoints: Record<Tab, string> = {
-      general:  '/api/v1/settings?branchId=default',
-      kitchen:  '/api/v1/settings/kitchen?branchId=default',
-      tables:   '/api/v1/settings/tables?branchId=default',
-      delivery: '/api/v1/settings/delivery?branchId=default',
-      cfdi:     '/api/v1/invoices/config/default',
+      general:  `/api/v1/settings?branchId=${branchId}`,
+      kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
+      tables:   `/api/v1/settings/tables?branchId=${branchId}`,
+      delivery: `/api/v1/settings/delivery?branchId=${branchId}`,
+      cfdi:     `/api/v1/invoices/config/${branchId}`,
     }
     const bodies: Record<Tab, unknown> = {
       general: branch, kitchen, tables, delivery, cfdi,
