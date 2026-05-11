@@ -18,7 +18,7 @@
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"],
-      "@shared-types": ["../shared/types/index.ts"]
+      "@shared-types": ["./src/types.ts"]
     }
   },
   "include": ["src"],
