@@ -1,0 +1,26 @@
+{
+  "name": "Copo Dashboard",
+  "short_name": "Copo",
+  "description": "Panel de control para dueños y administradores de Copo POS",
+  "start_url": "/#/dashboard",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F9FC",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "es-MX"
+}
