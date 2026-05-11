@@ -34,6 +34,7 @@ if (import.meta.env.DEV) {
       canSkipShiftOpen: true,
       canSkipShiftClose: true,
     },
+    'branch-1',
   )
   // NOTE: no setShift — mode selector routes to pos/shift/open if needed
 }

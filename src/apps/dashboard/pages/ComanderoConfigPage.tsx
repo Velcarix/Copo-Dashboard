@@ -62,7 +62,7 @@ export function ComanderoConfigPage() {
   useEffect(() => { void loadAll() }, [branchId])
 
   async function loadAll() {
-    if (!branchId) return
+    if (!branchId) { setLoading(false); return }
     setLoading(true)
     try {
       const [fetchedTables, fetchedWaiters, fetchedSections] = await Promise.all([

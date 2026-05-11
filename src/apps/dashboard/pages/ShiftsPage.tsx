@@ -103,7 +103,7 @@ export function ShiftsPage() {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!branchId) return
+    if (!branchId) { setLoading(false); return }
     const { from, to } = dateRange(rangeDays)
     setLoading(true)
     api.get<{ data: ShiftRecord[] }>(`/api/v1/shifts?branchId=${branchId}&from=${from}&to=${to}`)

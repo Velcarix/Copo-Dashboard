@@ -46,7 +46,7 @@ export function TablesPage() {
   useEffect(() => { void load() }, [branchId])
 
   async function load() {
-    if (!branchId) return
+    if (!branchId) { setLoading(false); return }
     setLoading(true)
     try {
       const data = await api.get<TableConfig[]>(`/api/v1/tables?branchId=${branchId}`)

@@ -43,7 +43,7 @@ export function InventoryPage() {
   const [savingNew, setSavingNew] = useState(false)
 
   useEffect(() => {
-    if (!branchId) return
+    if (!branchId) { setLoading(false); return }
     api.get<{ data: InventoryItem[] }>(`/api/v1/inventory?branchId=${branchId}`)
       .then(res => setItems(res.data))
       .catch(() => { if (import.meta.env.DEV) setItems(MOCK_INVENTORY) })

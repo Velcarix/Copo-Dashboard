@@ -173,7 +173,7 @@ export function EmployeesPage() {
   const [pinError, setPinError]         = useState('')
 
   useEffect(() => {
-    if (!branchId) return
+    if (!branchId) { setLoading(false); return }
     api.get<{ data: Employee[] }>(`/api/v1/employees?branchId=${branchId}`)
       .then(res => setEmployees(res.data))
       .catch(() => { if (import.meta.env.DEV) setEmployees(MOCK_EMPLOYEES) })
