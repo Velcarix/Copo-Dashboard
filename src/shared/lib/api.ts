@@ -1,7 +1,6 @@
 import { useAuthStore } from '@/shared/store/authStore'
 
-const BASE_URL = import.meta.env.VITE_API_URL
-if (!BASE_URL) throw new Error('VITE_API_URL is not set')
+const BASE_URL: string = import.meta.env.VITE_API_URL ?? ''
 
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean
@@ -20,6 +19,7 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  if (!BASE_URL) throw new ApiError('CONFIG_ERROR', 'VITE_API_URL no está configurada', 0)
   const { skipAuth = false, ...fetchOptions } = options
   const headers = new Headers(fetchOptions.headers)
 
