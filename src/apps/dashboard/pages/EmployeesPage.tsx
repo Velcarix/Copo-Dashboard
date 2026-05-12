@@ -212,7 +212,18 @@ export function EmployeesPage() {
         setEmployees(prev => [...prev, res.data])
       } else if (editEmployee) {
         const res = await api.put<{ data: Employee }>(`/api/v1/employees/${(editEmployee as Employee).id}`, payload)
-        setEmployees(prev => prev.map(e => e.id === (editEmployee as Employee).id ? res.data : e))
+        setEmployees(prev => prev.map(e => {
+          if (e.id === (editEmployee as Employee).id) {
+            // Merge response with existing data to avoid losing fields like hasPin
+            // if the server response is partial.
+            const hasPinBefore = e.hasPin || (e as any).has_pin || (e as any).hasPassword;
+            const updated = { ...e, ...res.data };
+            // If the user provided a NEW pin, or they already had one, ensure it's marked
+            updated.hasPin = !!(form.pin || hasPinBefore || updated.hasPin || (updated as any).has_pin);
+            return updated;
+          }
+          return e;
+        }))
       }
       closeModal()
     } catch (err) {
@@ -309,9 +320,14 @@ export function EmployeesPage() {
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{ROLE_LABELS[emp.role]}</td>
                 <td className="px-4 py-3">
-                  <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', emp.hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
-                    {emp.hasPin ? 'Configurado' : 'Sin PIN'}
-                  </span>
+                  {(() => {
+                    const hasPin = emp.hasPin || (emp as any).has_pin || (emp as any).hasPassword;
+                    return (
+                      <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
+                        {hasPin ? 'Configurado' : 'Sin PIN'}
+                      </span>
+                    )
+                  })()}
                 </td>
                 <td className="px-4 py-3">
                   <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', emp.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>

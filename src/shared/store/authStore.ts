@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { EmployeeRole, ProfilePermissions } from '@shared-types'
 
 interface AuthUser {
@@ -20,27 +21,49 @@ interface AuthState {
   logout: () => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  permissions: null,
-  accessToken: null,
-  branchId: null,
-  shiftId: null,
-  isAuthenticated: false,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      permissions: null,
+      accessToken: null,
+      branchId: null,
+      shiftId: null,
+      isAuthenticated: false,
 
-  setAuth(user, accessToken, permissions, branchId) {
-    set({ user, accessToken, isAuthenticated: true, permissions: permissions ?? null, branchId: branchId ?? null })
-  },
+      setAuth(user, accessToken, permissions, branchId) {
+        set({ 
+          user, 
+          accessToken, 
+          isAuthenticated: true, 
+          permissions: permissions ?? null, 
+          branchId: branchId ?? null 
+        })
+      },
 
-  setPermissions(permissions) {
-    set({ permissions })
-  },
+      setPermissions(permissions) {
+        set({ permissions })
+      },
 
-  setShift(shiftId) {
-    set({ shiftId })
-  },
+      setShift(shiftId) {
+        set({ shiftId })
+      },
 
-  logout() {
-    set({ user: null, permissions: null, accessToken: null, branchId: null, shiftId: null, isAuthenticated: false })
-  },
-}))
+      logout() {
+        set({ 
+          user: null, 
+          permissions: null, 
+          accessToken: null, 
+          branchId: null, 
+          shiftId: null, 
+          isAuthenticated: false 
+        })
+        // Optional: clear other persisted stores if needed
+      },
+    }),
+    {
+      name: 'copo-auth-storage',
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
+)
