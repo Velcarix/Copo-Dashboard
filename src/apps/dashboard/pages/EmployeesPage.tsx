@@ -40,6 +40,7 @@ interface EmployeeForm {
   name: string
   role: EmployeeRole
   pin: string
+  hasPin: boolean
   isShared: boolean
   canSkipShiftOpen: boolean
   canSkipShiftClose: boolean
@@ -49,6 +50,7 @@ const emptyForm = (): EmployeeForm => ({
   name: '',
   role: EmployeeRole.CASHIER,
   pin: '',
+  hasPin: false,
   isShared: false,
   canSkipShiftOpen: false,
   canSkipShiftClose: false,
@@ -221,7 +223,7 @@ export function EmployeesPage() {
           name: form.name,
           role: form.role,
           active: true,
-          hasPin: !!form.pin,
+          hasPin: form.pin ? true : form.hasPin,
           isShared: form.isShared,
           canSkipShiftOpen: form.canSkipShiftOpen,
           canSkipShiftClose: form.canSkipShiftClose,
@@ -325,6 +327,7 @@ export function EmployeesPage() {
                           name: emp.name,
                           role: emp.role,
                           pin: '',
+                          hasPin: emp.hasPin,
                           isShared: emp.isShared,
                           canSkipShiftOpen: emp.canSkipShiftOpen,
                           canSkipShiftClose: emp.canSkipShiftClose,
@@ -375,15 +378,23 @@ export function EmployeesPage() {
               </select>
 
               {/* PIN */}
-              <input
-                type="password"
-                value={form.pin}
-                onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                placeholder="PIN de 4 dígitos (vacío = no cambiar)"
-                inputMode="numeric"
-                maxLength={4}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
-              />
+              <div className="relative">
+                <input
+                  type="password"
+                  value={form.pin}
+                  onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                  placeholder="PIN de 4 dígitos (vacío = no cambiar)"
+                  inputMode="numeric"
+                  maxLength={4}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                />
+                {form.hasPin && !form.pin && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                    <span className="text-[10px] font-semibold text-green-600">Guardado</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Permission toggles */}
