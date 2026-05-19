@@ -4,7 +4,7 @@ import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
-import type { ApiResponse } from '@shared-types'
+import type { ApiResponse, ProfilePermissions } from '@shared-types'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -25,13 +25,14 @@ export function LoginPage() {
         accessToken: string
         user: { id: string; name: string; role: EmployeeRole }
         branch: { id: string; name: string }
+        permissions: ProfilePermissions
       }>>(
         '/api/v1/auth/login',
         { email, password },
         { skipAuth: true },
       )
-      const { user, accessToken, branch } = res.data
-      setAuth(user, accessToken, undefined, branch.id)
+      const { user, accessToken, branch, permissions } = res.data
+      setAuth(user, accessToken, permissions, branch.id)
       setBranches([{ id: branch.id, name: branch.name, city: '', isActive: true }])
       setSelected(branch.id)
       navigate('/dashboard')
