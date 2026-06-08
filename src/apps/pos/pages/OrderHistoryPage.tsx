@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useCartStore } from '@/shared/store/cartStore'
+import { api } from '@/shared/lib/api'
+import { useAuthStore } from '@/shared/store/authStore'
 
 type OrderStatus = 'completed' | 'cancelled' | 'refunded'
 
@@ -28,45 +30,6 @@ interface OrderHistoryPageProps {
   readOnly?: boolean
 }
 
-const MOCK_HISTORY: HistoryOrder[] = [
-  {
-    id: 'h-1', orderNumber: '#0051',
-    items: [
-      { productId: 'p1', name: 'Copa Especial Vainilla', quantity: 1, unitPrice: 5500 },
-      { productId: 'p2', name: 'Café Americano',         quantity: 2, unitPrice: 3500 },
-    ],
-    total: 12500, status: 'completed', paymentMethod: 'Tarjeta',
-    createdAt: new Date(Date.now() - 10 * 60_000).toISOString(),
-  },
-  {
-    id: 'h-2', orderNumber: '#0050',
-    items: [{ productId: 'p3', name: 'Waffle Chocolate', quantity: 1, unitPrice: 7800 }],
-    total: 7800, status: 'completed', paymentMethod: 'Efectivo',
-    createdAt: new Date(Date.now() - 25 * 60_000).toISOString(),
-  },
-  {
-    id: 'h-3', orderNumber: '#0049',
-    items: [{ productId: 'p4', name: 'Frappé Moka', quantity: 2, unitPrice: 6500 }],
-    total: 13000, status: 'refunded', paymentMethod: 'Tarjeta',
-    createdAt: new Date(Date.now() - 45 * 60_000).toISOString(),
-  },
-  {
-    id: 'h-4', orderNumber: '#0048',
-    items: [{ productId: 'p5', name: 'Brownie', quantity: 3, unitPrice: 4500 }],
-    total: 13500, status: 'cancelled', paymentMethod: 'Efectivo',
-    createdAt: new Date(Date.now() - 60 * 60_000).toISOString(),
-  },
-  {
-    id: 'h-5', orderNumber: '#0047',
-    items: [
-      { productId: 'p1', name: 'Vainilla', quantity: 2, unitPrice: 3500 },
-      { productId: 'p6', name: 'Pistache', quantity: 1, unitPrice: 3800 },
-    ],
-    total: 10800, status: 'completed', paymentMethod: 'QR',
-    createdAt: new Date(Date.now() - 80 * 60_000).toISOString(),
-  },
-]
-
 const STATUS_LABEL: Record<OrderStatus, string> = {
   completed: 'Completada',
   cancelled:  'Cancelada',
@@ -84,14 +47,42 @@ type Modal =
   | { type: 'refund'; order: HistoryOrder }
   | { type: 'cancel'; order: HistoryOrder }
 
+interface ApiOrderItem { productId: string; name: string; quantity: number; unitPrice: number }
+interface ApiOrder {
+  id: string; orderNumber: number; createdAt: string; totalAmount: number
+  status: string; paymentMethod: string | null; isEdited: boolean
+  employeeName: string; items: ApiOrderItem[]
+}
+
 export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: OrderHistoryPageProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [orders, setOrders] = useState<HistoryOrder[]>(MOCK_HISTORY)
+  const branchId = useAuthStore(s => s.branchId)
+  const [orders, setOrders] = useState<HistoryOrder[]>([])
   const [modal, setModal] = useState<Modal>({ type: 'none' })
   const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!branchId) return
+    setLoading(true)
+    api.get<{ data: ApiOrder[]; total: number }>(`/api/v1/orders?branchId=${branchId}&limit=50`)
+      .then(({ data }) => {
+        setOrders(data.map(o => ({
+          id: o.id,
+          orderNumber: `#${String(o.orderNumber).padStart(4, '0')}`,
+          items: o.items.map(i => ({ productId: i.productId, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice })),
+          total: o.totalAmount,
+          status: o.status.toLowerCase() as OrderStatus,
+          paymentMethod: o.paymentMethod ?? '',
+          createdAt: o.createdAt,
+          isEdited: o.isEdited,
+        })))
+      })
+      .catch(() => { /* show empty list */ })
+      .finally(() => setLoading(false))
+  }, [branchId])
 
   // Apply edit result when returning from POS
   useEffect(() => {
@@ -134,25 +125,29 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
   async function confirmRefund() {
     if (modal.type !== 'refund') return
     setLoading(true)
-    // await api.post(`/api/v1/orders/${modal.order.id}/refund`, {})
-    await new Promise(r => setTimeout(r, 450))
-    setOrders(prev => prev.map(o =>
-      o.id === modal.order.id ? { ...o, status: 'refunded' } : o
-    ))
-    setLoading(false)
-    setModal({ type: 'none' })
+    try {
+      await api.post(`/api/v1/orders/${modal.order.id}/refund`, {})
+      setOrders(prev => prev.map(o =>
+        o.id === modal.order.id ? { ...o, status: 'refunded' } : o
+      ))
+    } finally {
+      setLoading(false)
+      setModal({ type: 'none' })
+    }
   }
 
   async function confirmCancel() {
     if (modal.type !== 'cancel') return
     setLoading(true)
-    // await api.post(`/api/v1/orders/${modal.order.id}/cancel`, {})
-    await new Promise(r => setTimeout(r, 450))
-    setOrders(prev => prev.map(o =>
-      o.id === modal.order.id ? { ...o, status: 'cancelled' } : o
-    ))
-    setLoading(false)
-    setModal({ type: 'none' })
+    try {
+      await api.post(`/api/v1/orders/${modal.order.id}/cancel`, {})
+      setOrders(prev => prev.map(o =>
+        o.id === modal.order.id ? { ...o, status: 'cancelled' } : o
+      ))
+    } finally {
+      setLoading(false)
+      setModal({ type: 'none' })
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

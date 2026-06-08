@@ -29,7 +29,7 @@ interface BranchState {
 export const useBranchStore = create<BranchState>()(
   persist(
     (set, get) => ({
-      branches: MOCK_BRANCHES,
+      branches: [],
       selectedId: 'ALL',
       setBranches: (branches) => set({ branches }),
       setSelected: (id) => set({ selectedId: id }),

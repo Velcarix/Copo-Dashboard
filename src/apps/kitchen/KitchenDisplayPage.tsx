@@ -14,33 +14,6 @@ interface KitchenOrder {
   status: KitchenOrderStatus
 }
 
-// Mock orders — replaced by API response once backend is connected
-const INITIAL_MOCK_ORDERS: KitchenOrder[] = [
-  {
-    id: 'ko-1', orderNumber: 5,
-    items: ['Café Americano x2', 'Waffle Chocolate'],
-    sentToKitchenAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-    isModified: false, status: 'preparing',
-  },
-  {
-    id: 'ko-2', orderNumber: 6,
-    items: ['Copa Especial Vainilla', 'Brownie x2'],
-    sentToKitchenAt: new Date(Date.now() - 13 * 60_000).toISOString(),
-    isModified: true, status: 'new',
-  },
-  {
-    id: 'ko-3', orderNumber: 7,
-    items: ['Frappé Moka', 'Croissant Mantequilla'],
-    sentToKitchenAt: new Date(Date.now() - 3 * 60_000).toISOString(),
-    isModified: false, status: 'new',
-  },
-  {
-    id: 'ko-4', orderNumber: 8,
-    items: ['Mango con Chile x3'],
-    sentToKitchenAt: new Date(Date.now() - 1 * 60_000).toISOString(),
-    isModified: false, status: 'new',
-  },
-]
 
 function getElapsedSeconds(sentAt: string): number {
   return Math.floor((Date.now() - new Date(sentAt).getTime()) / 1000)
@@ -59,7 +32,7 @@ function formatReceivedTime(sentAt: string): string {
 export function KitchenDisplayPage() {
   // Force re-render every second so timers stay live
   const [, tick] = useReducer(x => x + 1, 0)
-  const [orders, setOrders] = useState<KitchenOrder[]>(INITIAL_MOCK_ORDERS)
+  const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set())
   const branchId = useAuthStore(s => s.branchId)
 

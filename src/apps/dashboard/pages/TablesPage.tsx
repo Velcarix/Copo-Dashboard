@@ -10,14 +10,6 @@ interface TableForm {
 
 const EMPTY_FORM: TableForm = { name: '', capacity: '4' }
 
-const MOCK_TABLES: TableConfig[] = [
-  { id: 't1', branchId: 'default', name: 'Mesa 1', capacity: 4, positionX: 0, positionY: 0, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-  { id: 't2', branchId: 'default', name: 'Mesa 2', capacity: 4, positionX: 1, positionY: 0, status: 'occupied', sessionId: 's1', waiterId: null, waiterName: 'Ana', mergedWith: [] },
-  { id: 't3', branchId: 'default', name: 'Mesa 3', capacity: 2, positionX: 2, positionY: 0, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-  { id: 't4', branchId: 'default', name: 'Mesa 4', capacity: 6, positionX: 0, positionY: 1, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-  { id: 'b1', branchId: 'default', name: 'Barra 1', capacity: 1, positionX: 0, positionY: 2, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-]
-
 const STATUS_LABEL: Record<TableConfig['status'], string> = {
   available: 'Libre',
   occupied:  'Ocupada',
@@ -49,10 +41,10 @@ export function TablesPage() {
     if (!branchId) { setLoading(false); return }
     setLoading(true)
     try {
-      const data = await api.get<TableConfig[]>(`/api/v1/tables?branchId=${branchId}`)
-      setTables(data)
+      const resp = await api.get<{ data: TableConfig[] }>(`/api/v1/tables?branchId=${branchId}`)
+      setTables(resp.data)
     } catch {
-      setTables(MOCK_TABLES)
+      setTables([])
     } finally {
       setLoading(false)
     }
@@ -91,7 +83,7 @@ export function TablesPage() {
         await api.put(`/api/v1/tables/${editId}`, { name: form.name.trim(), capacity: cap })
         setTables(ts => ts.map(t => t.id === editId ? { ...t, name: form.name.trim(), capacity: cap } : t))
       } else {
-        const created = await api.post<TableConfig>('/api/v1/tables', {
+        const { data: created } = await api.post<{ data: TableConfig }>('/api/v1/tables', {
           branchId: branchId ?? '',
           name: form.name.trim(),
           capacity: cap,

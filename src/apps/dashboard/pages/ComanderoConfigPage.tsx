@@ -20,27 +20,6 @@ interface SectionConfig {
   assignedWaiterName: string | null
 }
 
-// ── Mocks ──────────────────────────────────────────────────────────────────────
-
-const MOCK_TABLES: TableConfig[] = [
-  { id: 't1', branchId: 'default', name: 'Mesa 1', capacity: 4, positionX: 0, positionY: 0, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-  { id: 't2', branchId: 'default', name: 'Mesa 2', capacity: 4, positionX: 1, positionY: 0, status: 'occupied', sessionId: 's1', waiterId: 'w1', waiterName: 'Ana', mergedWith: [] },
-  { id: 't3', branchId: 'default', name: 'Mesa 3', capacity: 2, positionX: 2, positionY: 0, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-  { id: 't4', branchId: 'default', name: 'Mesa 4', capacity: 6, positionX: 0, positionY: 1, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-  { id: 'b1', branchId: 'default', name: 'Barra 1', capacity: 1, positionX: 0, positionY: 2, status: 'available', sessionId: null, waiterId: null, waiterName: null, mergedWith: [] },
-]
-
-const MOCK_WAITERS: WaiterEmployee[] = [
-  { id: 'w1', name: 'Ana García', active: true },
-  { id: 'w2', name: 'Carlos Ruiz', active: true },
-  { id: 'w3', name: 'María López', active: false },
-]
-
-const MOCK_SECTIONS: SectionConfig[] = [
-  { id: 'sec1', branchId: 'default', name: 'Sección A', tableIds: ['t1', 't2'], assignedWaiterId: 'w1', assignedWaiterName: 'Ana García' },
-  { id: 'sec2', branchId: 'default', name: 'Barra', tableIds: ['b1'], assignedWaiterId: null, assignedWaiterName: null },
-]
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ComanderoConfigPage() {
@@ -65,18 +44,17 @@ export function ComanderoConfigPage() {
     if (!branchId) { setLoading(false); return }
     setLoading(true)
     try {
-      const [fetchedTables, fetchedWaiters, fetchedSections] = await Promise.all([
-        api.get<TableConfig[]>(`/api/v1/tables?branchId=${branchId}`),
-        api.get<WaiterEmployee[]>(`/api/v1/employees?branchId=${branchId}&role=WAITER`),
-        api.get<SectionConfig[]>(`/api/v1/sections?branchId=${branchId}`),
+      const [tablesResp, waitersResp] = await Promise.all([
+        api.get<{ data: TableConfig[] }>(`/api/v1/tables?branchId=${branchId}`),
+        api.get<{ data: WaiterEmployee[] }>(`/api/v1/employees?branchId=${branchId}&role=WAITER`),
       ])
-      setTables(fetchedTables)
-      setWaiters(fetchedWaiters)
-      setSections(fetchedSections)
+      setTables(tablesResp.data)
+      setWaiters(waitersResp.data)
+      setSections([])
     } catch {
-      setTables(MOCK_TABLES)
-      setWaiters(MOCK_WAITERS)
-      setSections(MOCK_SECTIONS)
+      setTables([])
+      setWaiters([])
+      setSections([])
     } finally {
       setLoading(false)
     }

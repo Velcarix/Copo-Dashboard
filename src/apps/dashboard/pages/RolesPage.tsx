@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
+import { useAuthStore } from '@/shared/store/authStore'
 import { EmployeeRole, type ProfilePermissions } from '@shared-types'
 
 // ── Permission metadata ───────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ function Toggle({
 type PermMatrix = Record<EmployeeRole, ProfilePermissions>
 
 export function RolesPage() {
+  const branchId = useAuthStore(s => s.branchId)
   const [matrix, setMatrix] = useState<PermMatrix | null>(null)
   const [dirty, setDirty] = useState<Set<EmployeeRole>>(new Set())
   const [saving, setSaving] = useState<EmployeeRole | null>(null)
@@ -155,9 +157,10 @@ export function RolesPage() {
   const groups = Array.from(new Set(PERMISSIONS.map(p => p.group)))
 
   useEffect(() => {
+    if (!branchId) return
     api
-      .get<ProfilePermissions[]>('/api/v1/profiles?branchId=1')
-      .then(profiles => {
+      .get<{ data: ProfilePermissions[] }>(`/api/v1/profiles?branchId=${branchId}`)
+      .then(({ data: profiles }) => {
         const m = {} as PermMatrix
         for (const p of profiles) m[p.role] = p
         setMatrix(m)
@@ -169,7 +172,7 @@ export function RolesPage() {
           setMatrix(m)
         }
       })
-  }, [])
+  }, [branchId])
 
   function toggle(role: EmployeeRole, key: PermKey, value: boolean) {
     setMatrix(prev => {
@@ -187,7 +190,7 @@ export function RolesPage() {
     setSaving(role)
     setError(null)
     try {
-      await api.put(`/api/v1/profiles/${role}`, matrix[role])
+      await api.put(`/api/v1/profiles/${role}?branchId=${branchId}`, matrix[role])
       setDirty(prev => {
         const next = new Set(prev)
         next.delete(role)
