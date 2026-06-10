@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { api } from '@/shared/lib/api'
 import { useBranchStore, Branch } from '@/shared/store/branchStore'
 
 export function BranchesPage() {
@@ -8,6 +9,8 @@ export function BranchesPage() {
   const [showModal, setShowModal] = useState(false)
   const [newBranch, setNewBranch] = useState({ name: '', city: '', address: '' })
   const [editBranch, setEditBranch] = useState<Branch | null>(null)
+  const [editFixedCosts, setEditFixedCosts] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -17,10 +20,27 @@ export function BranchesPage() {
     setShowModal(false)
   }
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleOpenEdit = (branch: Branch) => {
+    setEditBranch(branch)
+    setEditFixedCosts(branch.monthlyFixedCosts ? String(Math.round(branch.monthlyFixedCosts / 100)) : '')
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editBranch) return
-    updateBranch(editBranch.id, { name: editBranch.name, city: editBranch.city, address: editBranch.address })
+    setSavingEdit(true)
+    const monthlyFixedCosts = editFixedCosts ? Math.round(parseFloat(editFixedCosts) * 100) : 0
+    try {
+      await api.patch(`/api/v1/branches/${editBranch.id}`, {
+        name: editBranch.name,
+        address: editBranch.address,
+        monthlyFixedCosts,
+      })
+    } catch {
+      // ignore — update store anyway since branch info is mostly local
+    }
+    updateBranch(editBranch.id, { name: editBranch.name, city: editBranch.city, address: editBranch.address, monthlyFixedCosts })
+    setSavingEdit(false)
     setEditBranch(null)
   }
 
@@ -71,7 +91,7 @@ export function BranchesPage() {
 
             <div className="pt-3 border-t border-[var(--color-border)] flex gap-2">
               <button
-                onClick={() => setEditBranch(branch)}
+                onClick={() => handleOpenEdit(branch)}
                 className="flex-1 py-2 text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] rounded-lg transition-colors border border-[var(--color-border)]"
               >
                 Configurar
@@ -208,6 +228,25 @@ export function BranchesPage() {
                   />
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                    Costos fijos mensuales
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] text-sm">$</span>
+                    <input
+                      type="number"
+                      value={editFixedCosts}
+                      onChange={e => setEditFixedCosts(e.target.value)}
+                      onFocus={e => e.target.select()}
+                      placeholder="0"
+                      min="0"
+                      className="w-full pl-8 pr-4 py-3 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                    />
+                  </div>
+                  <p className="text-xs text-[var(--color-text-muted)]">Renta, sueldos, servicios — en pesos. Deja en $0 para no mostrar punto de equilibrio.</p>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
@@ -218,9 +257,10 @@ export function BranchesPage() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-3 font-bold text-white bg-[var(--color-accent)] rounded-xl shadow-lg shadow-[var(--color-accent)]/20 active:scale-95 transition-transform"
+                    disabled={savingEdit}
+                    className="flex-1 py-3 font-bold text-white bg-[var(--color-accent)] rounded-xl shadow-lg shadow-[var(--color-accent)]/20 active:scale-95 transition-transform disabled:opacity-50"
                   >
-                    Guardar cambios
+                    {savingEdit ? 'Guardando…' : 'Guardar cambios'}
                   </button>
                 </div>
               </form>

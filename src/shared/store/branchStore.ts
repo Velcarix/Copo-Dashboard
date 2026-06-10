@@ -7,6 +7,7 @@ export interface Branch {
   city: string
   address?: string
   isActive: boolean
+  monthlyFixedCosts?: number
 }
 
 // DEV mock — replace with real fetch from /api/v1/branches once backend is ready

@@ -31,6 +31,7 @@ interface DashboardData {
   ordersCount: number
   customersCount: number
   breakEvenRemaining: number
+  monthlyFixedCosts: number
   lowStockItems: { name: string; currentStock: number; minStock: number }[]
   salesChart: { label: string; total: number; count: number }[]
   branchSalesChart: { label: string; [k: string]: number | string }[]
@@ -177,11 +178,13 @@ export function DashboardHome() {
         <MetricCard label="Ticket promedio"   value={formatCurrency(data?.avgTicket ?? 0)} />
         <MetricCard label="Órdenes"           value={String(data?.ordersCount ?? 0)} />
         <MetricCard label="Clientes"          value={String(data?.customersCount ?? 0)} />
-        <MetricCard
-          label="Pto. de equilibrio"
-          value={(data?.breakEvenRemaining ?? 0) <= 0 ? '¡Cubierto!' : formatCurrency(data?.breakEvenRemaining ?? 0)}
-          subtitle={(data?.breakEvenRemaining ?? 0) <= 0 ? undefined : 'restante'}
-        />
+        {(data?.monthlyFixedCosts ?? 0) > 0 && (
+          <MetricCard
+            label="Pto. de equilibrio"
+            value={(data?.breakEvenRemaining ?? 0) <= 0 ? '¡Cubierto!' : formatCurrency(data?.breakEvenRemaining ?? 0)}
+            subtitle={(data?.breakEvenRemaining ?? 0) <= 0 ? undefined : 'restante'}
+          />
+        )}
       </div>
 
       {/* ── Sales goal ── */}

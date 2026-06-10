@@ -1,4 +1,4 @@
-import { Outlet, NavLink, Link } from 'react-router-dom'
+import { Outlet, NavLink } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { BranchSelector } from '@/shared/components/BranchSelector'
 import { useAuthStore } from '@/shared/store/authStore'
