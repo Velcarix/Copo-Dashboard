@@ -55,7 +55,7 @@ export const router = createHashRouter([
               { path: 'tables', element: <TablesPage /> },
               { path: 'comandero-config', element: <ComanderoConfigPage /> },
               { path: 'kitchen', element: <KitchenDashboardPage /> },
-              { path: 'orders', element: <OrderHistoryPage hideBackButton readOnly /> },
+              { path: 'orders', element: <OrderHistoryPage hideBackButton /> },
               { path: 'shifts', element: <ShiftsPage /> },
               { path: 'invoices', element: <InvoicesPage /> },
               { path: 'roles', element: <RolesPage /> },

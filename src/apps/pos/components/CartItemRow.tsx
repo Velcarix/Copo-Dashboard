@@ -10,7 +10,7 @@ interface CartItemRowProps {
 }
 
 export function CartItemRow({ item, onQtyChange, onRemove, onEdit }: CartItemRowProps) {
-  const itemTotal = (item.unitPrice + item.modifiers.reduce((s, m) => s + m.priceDelta, 0)) * item.quantity
+  const itemTotal = (item.unitPrice + (item.modifiers ?? []).reduce((s, m) => s + m.priceDelta, 0)) * item.quantity
 
   function handleDecrement() {
     if (item.quantity <= 1) {
@@ -34,9 +34,9 @@ export function CartItemRow({ item, onQtyChange, onRemove, onEdit }: CartItemRow
             <Pencil size={13} strokeWidth={2} />
           </button>
         </div>
-        {item.modifiers.length > 0 && (
+        {(item.modifiers ?? []).length > 0 && (
           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-            {item.modifiers.map(m => m.optionName).join(', ')}
+            {(item.modifiers ?? []).map(m => m.optionName).join(', ')}
           </p>
         )}
         {item.note && (

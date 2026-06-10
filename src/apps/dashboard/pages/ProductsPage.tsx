@@ -1190,8 +1190,8 @@ export function ProductsPage() {
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{CATEGORY_LABELS[p.category as import('@shared-types').ProductCategory] ?? p.category}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{formatCurrency(p.basePrice)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                  {p.modifierGroups.length > 0
-                    ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{p.modifierGroups.length} grupo{p.modifierGroups.length > 1 ? 's' : ''}</span>
+                  {(p.modifierGroups ?? []).length > 0
+                    ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{(p.modifierGroups ?? []).length} grupo{(p.modifierGroups ?? []).length > 1 ? 's' : ''}</span>
                     : <span className="text-xs text-[var(--color-text-muted)]">—</span>
                   }
                 </td>

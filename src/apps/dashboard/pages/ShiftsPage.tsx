@@ -6,7 +6,8 @@ import { useAuthStore } from '@/shared/store/authStore'
 
 interface ShiftRecord {
   id: string
-  employeeName: string
+  openedByName: string
+  closedByName: string | null
   openedAt: string
   closedAt: string | null
   status: ShiftStatus
@@ -44,7 +45,7 @@ function dateRange(days: number) {
 
 const MOCK_SHIFTS: ShiftRecord[] = [
   {
-    id: 's1', employeeName: 'María López',
+    id: 's1', openedByName: 'María López', closedByName: null,
     openedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
     closedAt: null, status: ShiftStatus.OPEN,
     openingCash: 50000, expectedCash: 187500,
@@ -52,7 +53,7 @@ const MOCK_SHIFTS: ShiftRecord[] = [
     salesTotal: 137500, ordersCount: 18, notes: null,
   },
   {
-    id: 's2', employeeName: 'Carlos Vega',
+    id: 's2', openedByName: 'Carlos Vega', closedByName: 'Carlos Vega',
     openedAt: new Date(Date.now() - 26 * 3600000).toISOString(),
     closedAt: new Date(Date.now() - 18 * 3600000).toISOString(),
     status: ShiftStatus.CLOSED_BALANCED,
@@ -61,7 +62,7 @@ const MOCK_SHIFTS: ShiftRecord[] = [
     salesTotal: 262500, ordersCount: 34, notes: null,
   },
   {
-    id: 's3', employeeName: 'Ana Ruiz',
+    id: 's3', openedByName: 'Ana Ruiz', closedByName: 'Admin Casino',
     openedAt: new Date(Date.now() - 50 * 3600000).toISOString(),
     closedAt: new Date(Date.now() - 42 * 3600000).toISOString(),
     status: ShiftStatus.CLOSED_DEFICIT,
@@ -70,7 +71,7 @@ const MOCK_SHIFTS: ShiftRecord[] = [
     salesTotal: 148500, ordersCount: 19, notes: 'Probablemente cambio equivocado',
   },
   {
-    id: 's4', employeeName: 'Luis Méndez',
+    id: 's4', openedByName: 'Luis Méndez', closedByName: 'Luis Méndez',
     openedAt: new Date(Date.now() - 74 * 3600000).toISOString(),
     closedAt: new Date(Date.now() - 66 * 3600000).toISOString(),
     status: ShiftStatus.CLOSED_SURPLUS,
@@ -202,7 +203,12 @@ export function ShiftsPage() {
 
                   {/* Employee + time */}
                   <span className="flex-1 min-w-0">
-                    <span className="font-medium text-sm text-[var(--color-text-primary)]">{shift.employeeName}</span>
+                    <span className="font-medium text-sm text-[var(--color-text-primary)]">
+                      {shift.openedByName}
+                      {shift.closedByName && shift.closedByName !== shift.openedByName && (
+                        <span className="text-[var(--color-text-muted)] font-normal"> → {shift.closedByName}</span>
+                      )}
+                    </span>
                     <span className="ml-2 text-xs text-[var(--color-text-muted)]">
                       {formatDateTime(shift.openedAt)}
                       {shift.closedAt ? ` — ${formatDateTime(shift.closedAt)}` : ' (activo)'}
@@ -225,6 +231,16 @@ export function ShiftsPage() {
                 {/* Expanded detail */}
                 {isOpen && (
                   <div className="border-t border-[var(--color-border)] px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                    <div>
+                      <p className="text-xs text-[var(--color-text-muted)]">Abrió</p>
+                      <p className="font-medium text-[var(--color-text-primary)]">{shift.openedByName}</p>
+                    </div>
+                    {shift.closedByName && (
+                      <div>
+                        <p className="text-xs text-[var(--color-text-muted)]">Cerró</p>
+                        <p className="font-medium text-[var(--color-text-primary)]">{shift.closedByName}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs text-[var(--color-text-muted)]">Efectivo inicial</p>
                       <p className="font-medium text-[var(--color-text-primary)]">{formatCurrency(shift.openingCash)}</p>

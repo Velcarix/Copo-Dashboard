@@ -69,6 +69,10 @@ function formatInventoryRows(rows: InventoryRow[]): Record<string, string | numb
   return rows.map(r => ({ ...r, costOfGoods: formatCurrency(r.costOfGoods) }))
 }
 
+function formatOrderRows(rows: OrderRow[]): Record<string, string | number>[] {
+  return rows.map(r => ({ ...r, totalAmount: formatCurrency(Number(r.totalAmount)) }))
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ReportsPage() {
@@ -184,7 +188,7 @@ export function ReportsPage() {
 
               <ReportTable
                 columns={ORDER_COLUMNS}
-                data={orders as unknown as Record<string, string | number>[]}
+                data={formatOrderRows(orders)}
                 total={ordersTotal}
                 page={ordersPage}
                 onPageChange={setOrdersPage}

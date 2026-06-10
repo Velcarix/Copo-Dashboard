@@ -74,14 +74,10 @@ export function InventoryPage() {
     setSavingNew(true)
     setNewItemError('')
     try {
-      // await api.post('/api/v1/inventory', { ...newItem, currentStock: stock, minStock: min, branchId: 'default' })
-      await new Promise(r => setTimeout(r, 350))
-      const created: InventoryItem = {
-        id: `i-${Date.now()}`, name: newItem.name, unit: newItem.unit,
-        currentStock: stock, minStock: min,
-        isLow: stock < min, lastUpdated: new Date().toISOString(),
-      }
-      setItems(prev => [...prev, created])
+      const res = await api.post<{ data: InventoryItem }>('/api/v1/inventory', {
+        name: newItem.name, unit: newItem.unit, currentStock: stock, minStock: min,
+      })
+      setItems(prev => [...prev, res.data])
       setNewItem({ name: '', unit: 'grams', currentStock: '', minStock: '' })
       setShowNewForm(false)
     } catch (err) {
