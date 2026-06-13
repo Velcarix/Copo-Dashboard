@@ -13,6 +13,8 @@ import { v4 as uuidv4 } from 'uuid'
 interface CashFlowProps {
   onSuccess: (orderResponse?: OrderResponse) => void
   onCancel: () => void
+  editMode?: boolean
+  amountToCharge?: number
 }
 
 /**
@@ -22,7 +24,7 @@ interface CashFlowProps {
  * the most common denomination inputs in the POS context.
  * Larger bills can be handled by the extended keypad in future iterations.
  */
-export function CashFlow({ onSuccess, onCancel }: CashFlowProps) {
+export function CashFlow({ onSuccess, onCancel, editMode, amountToCharge }: CashFlowProps) {
   const { items, totalAmount, discountAmount, discount, orderId, clearCart } = useCartStore()
   const { user, shiftId, branchId } = useAuthStore()
   const { isOnline } = useNetworkStore()
@@ -30,15 +32,25 @@ export function CashFlow({ onSuccess, onCancel }: CashFlowProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const amount = editMode && amountToCharge !== undefined ? amountToCharge : totalAmount
+
   // received is a pesos string with decimal (e.g. "50.00" = $50.00 = 5000 centavos)
   const receivedCents = received ? Math.round(parseFloat(received) * 100) : 0
-  const change = receivedCents - totalAmount
-  const canConfirm = receivedCents >= totalAmount && items.length > 0
+  const change = receivedCents - amount
+  const canConfirm = receivedCents >= amount && (editMode || items.length > 0)
 
   async function handleConfirm() {
     if (!canConfirm || !user) return
     setLoading(true)
     setError('')
+
+    if (editMode) {
+      // Edit mode: don't create a new order, POSMain will call PUT /api/v1/orders/:id
+      clearCart()
+      onSuccess()
+      setLoading(false)
+      return
+    }
 
     const order: CreateOrderDto = {
       id: orderId,
@@ -88,7 +100,7 @@ export function CashFlow({ onSuccess, onCancel }: CashFlowProps) {
     <div className="space-y-4 p-4">
       <div className="text-center">
         <p className="text-sm text-[var(--color-text-muted)]">Total a cobrar</p>
-        <p className="text-3xl font-bold text-[var(--color-text-primary)]">{formatCurrency(totalAmount)}</p>
+        <p className="text-3xl font-bold text-[var(--color-text-primary)]">{formatCurrency(amount)}</p>
       </div>
 
       <div className="text-center">

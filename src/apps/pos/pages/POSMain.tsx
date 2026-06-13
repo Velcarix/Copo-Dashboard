@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { usePosStore, selectFilteredProducts } from '@/shared/store/posStore'
 import { useCartStore } from '@/shared/store/cartStore'
+import type { EditingOrder } from '@/shared/store/cartStore'
 import { CategoryPills } from '../components/CategoryPills'
 import { ProductCard } from '../components/ProductCard'
 import { ModifierSheet } from '../components/modifiers/ModifierSheet'
 import { CartPanel } from '../components/CartPanel'
 import { PaymentModal } from '../components/payment/PaymentModal'
 import { useAuthStore } from '@/shared/store/authStore'
+import { api } from '@/shared/lib/api'
 import type { ProductWithModifiers } from '@/shared/store/posStore'
 import type { CartItem } from '@shared-types'
 
@@ -15,9 +17,16 @@ export function POSMain() {
   const navigate = useNavigate()
   const { activeCategory, isLoading, setCategory, refreshProducts } = usePosStore()
   const branchId = useAuthStore(s => s.branchId) ?? ''
+  const user = useAuthStore(s => s.user)
   const products = usePosStore(selectFilteredProducts)
   const { items } = useCartStore()
   const editingOrder = useCartStore(s => s.editingOrder)
+
+  // Snapshot edit state before PaymentModal clears the cart
+  const editingOrderRef = useRef<EditingOrder | null>(null)
+  const editItemsRef = useRef<CartItem[]>([])
+  const editTotalRef = useRef<number>(0)
+  const editAmountToChargeRef = useRef<number>(0)
 
   // Modifier sheet state
   const [modifierProduct, setModifierProduct] = useState<ProductWithModifiers | null>(null)
@@ -61,26 +70,51 @@ export function POSMain() {
     }
   }
 
-  function handleCobrar() {
-    const { editingOrder: editing, totalAmount } = useCartStore.getState()
-    if (editing && totalAmount <= editing.originalTotal) {
-      // No extra charge needed — just save and go back
-      useCartStore.getState().clearCart()
-      navigate('/pos/history', {
-        state: { savedEdit: { orderId: editing.orderId, newTotal: totalAmount } },
+  async function saveEditToBackend(editing: EditingOrder, items: CartItem[], newTotal: number) {
+    try {
+      await api.put(`/api/v1/orders/${editing.orderId}`, {
+        items: items.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
+        newTotal,
+        editedBy: user?.name ?? 'Cajero',
       })
-    } else {
-      setShowPayment(true)
+    } catch { /* silently fail — local update still applies */ }
+  }
+
+  function handleCobrar() {
+    const { editingOrder: editing, totalAmount, items: currentItems } = useCartStore.getState()
+
+    if (editing) {
+      // Snapshot everything before PaymentModal or clearCart can wipe the store
+      editingOrderRef.current = editing
+      editItemsRef.current = currentItems
+      editTotalRef.current = totalAmount
+      editAmountToChargeRef.current = Math.max(0, totalAmount - editing.originalTotal)
+
+      if (totalAmount <= editing.originalTotal) {
+        // No extra charge — save to backend and navigate
+        void saveEditToBackend(editing, currentItems, totalAmount).then(() => {
+          useCartStore.getState().clearCart()
+          navigate('/pos/history', {
+            state: { savedEdit: { orderId: editing.orderId, newTotal: totalAmount } },
+          })
+        })
+        return
+      }
     }
+
+    setShowPayment(true)
   }
 
   function handlePaymentSuccess() {
     setShowPayment(false)
-    const { editingOrder: editing, totalAmount } = useCartStore.getState()
+    // Use ref — store's editingOrder is already null because CashFlow called clearCart()
+    const editing = editingOrderRef.current
     if (editing) {
-      const savedEdit = { orderId: editing.orderId, newTotal: totalAmount }
-      useCartStore.getState().clearCart()
-      navigate('/pos/history', { state: { savedEdit } })
+      const savedEdit = { orderId: editing.orderId, newTotal: editTotalRef.current }
+      void saveEditToBackend(editing, editItemsRef.current, editTotalRef.current).then(() => {
+        navigate('/pos/history', { state: { savedEdit } })
+      })
+      editingOrderRef.current = null
     }
   }
 
@@ -179,6 +213,8 @@ export function POSMain() {
         <PaymentModal
           onSuccess={handlePaymentSuccess}
           onClose={() => setShowPayment(false)}
+          editMode={!!editingOrderRef.current}
+          amountToCharge={editAmountToChargeRef.current}
         />
       )}
 

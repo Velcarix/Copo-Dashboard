@@ -23,6 +23,7 @@ interface HistoryOrder {
   paymentMethod: string
   createdAt: string
   isEdited?: boolean
+  employeeName: string
 }
 
 interface OrderHistoryPageProps {
@@ -78,6 +79,7 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
           paymentMethod: o.paymentMethod ?? '',
           createdAt: o.createdAt,
           isEdited: o.isEdited,
+          employeeName: o.employeeName,
         })))
       })
       .catch(() => { /* show empty list */ })
@@ -213,6 +215,11 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
                       <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                         {new Date(order.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
                       </p>
+                      {order.employeeName && (
+                        <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 truncate max-w-[120px]">
+                          {order.employeeName}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-secondary)] max-w-[200px] truncate hidden sm:table-cell">
                       {order.items.map(i => `${i.name} ×${i.quantity}`).join(', ')}

@@ -46,11 +46,14 @@ const EMPTY_INVOICE: InvoiceForm = {
 interface PaymentModalProps {
   onSuccess: (orderResponse?: OrderResponse) => void
   onClose: () => void
+  editMode?: boolean
+  amountToCharge?: number
 }
 
-export function PaymentModal({ onSuccess, onClose }: PaymentModalProps) {
+export function PaymentModal({ onSuccess, onClose, editMode, amountToCharge }: PaymentModalProps) {
   const { items, totalAmount, discountAmount, discount, orderId, customerName, clearCart } = useCartStore()
   const { user, shiftId, branchId } = useAuthStore()
+  const displayAmount = editMode && amountToCharge !== undefined ? amountToCharge : totalAmount
   const { isOnline } = useNetworkStore()
   const [step, setStep] = useState<Step>('select')
   const [terminalIntentId, setTerminalIntentId] = useState<string | null>(null)
@@ -155,12 +158,16 @@ export function PaymentModal({ onSuccess, onClose }: PaymentModalProps) {
   async function handleQRConfirm() {
     if (!user) return
     setLoading(true)
-    const order = buildOrder(PaymentMethod.QR)
     try {
-      if (isOnline) {
+      if (editMode) {
+        // Edit mode: don't create a new order, POSMain will call PUT /api/v1/orders/:id
+        afterPayment()
+      } else if (isOnline) {
+        const order = buildOrder(PaymentMethod.QR)
         const res = await api.post<ApiResponse<OrderResponse>>('/api/v1/orders', order)
         afterPayment(res.data)
       } else {
+        const order = buildOrder(PaymentMethod.QR)
         const { db } = await import('@/shared/lib/db')
         await db.pendingOrders.add({ localId: orderId, branchId: branchId ?? '', data: order, createdAt: order.createdAt!, synced: false })
         afterPayment()
@@ -175,12 +182,19 @@ export function PaymentModal({ onSuccess, onClose }: PaymentModalProps) {
     if (!user) return
     setLoading(true)
     try {
-      const order = buildOrder(PaymentMethod.CARD_TERMINAL)
-      const orderRes = await api.post<ApiResponse<OrderResponse>>('/api/v1/orders', order)
+      let intentOrderId: string
+      if (editMode) {
+        // Edit mode: use the existing orderId for the terminal intent (no new order)
+        intentOrderId = orderId
+      } else {
+        const order = buildOrder(PaymentMethod.CARD_TERMINAL)
+        const orderRes = await api.post<ApiResponse<OrderResponse>>('/api/v1/orders', order)
+        intentOrderId = orderRes.data.id
+      }
       const intentRes = await api.post<TerminalIntentResponse>('/api/v1/payments/terminal-intent', {
-        amount: totalAmount,
-        orderId: orderRes.data.id,
-        description: 'Pago en POS',
+        amount: displayAmount,
+        orderId: intentOrderId,
+        description: editMode ? 'Cargo adicional por edición' : 'Pago en POS',
       })
       setTerminalIntentId(intentRes.intentId)
       setStep('terminal')
@@ -221,7 +235,7 @@ export function PaymentModal({ onSuccess, onClose }: PaymentModalProps) {
         {/* select step */}
         {step === 'select' && (
           <div className="p-4 space-y-3">
-            <p className="text-center text-2xl font-bold text-[var(--color-text-primary)]">{formatCurrency(totalAmount)}</p>
+            <p className="text-center text-2xl font-bold text-[var(--color-text-primary)]">{formatCurrency(displayAmount)}</p>
             {notice && <p className="text-sm text-[var(--color-danger)] text-center">{notice}</p>}
             {[
               { label: 'Efectivo', icon: '💵', action: () => setStep('cash') },
@@ -243,7 +257,12 @@ export function PaymentModal({ onSuccess, onClose }: PaymentModalProps) {
         )}
 
         {step === 'cash' && (
-          <CashFlow onSuccess={(r) => afterPayment(r)} onCancel={() => setStep('select')} />
+          <CashFlow
+            onSuccess={(r) => afterPayment(r)}
+            onCancel={() => setStep('select')}
+            editMode={editMode}
+            amountToCharge={amountToCharge}
+          />
         )}
 
         {step === 'qr' && (
@@ -270,7 +289,7 @@ export function PaymentModal({ onSuccess, onClose }: PaymentModalProps) {
         {step === 'terminal' && terminalIntentId && (
           <TerminalWaiting
             intentId={terminalIntentId}
-            amount={totalAmount}
+            amount={displayAmount}
             onSuccess={() => afterPayment(completedOrderResponse ?? undefined)}
             onError={(status) => {
               setNotice(status === PaymentStatus.DECLINED ? 'Pago rechazado' : 'Pago cancelado')

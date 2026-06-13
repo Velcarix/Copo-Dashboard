@@ -20,6 +20,11 @@ export function CobrarBar({ total, itemCount, onCobrar }: CobrarBarProps) {
     label = `Cobrar (${itemCount})`
   }
 
+  // In edit mode show the extra amount to charge, not the full new total
+  const displayTotal = editingOrder && total > editingOrder.originalTotal
+    ? total - editingOrder.originalTotal
+    : total
+
   return (
     <button
       type="button"
@@ -36,7 +41,7 @@ export function CobrarBar({ total, itemCount, onCobrar }: CobrarBarProps) {
       style={{ transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)' }}
     >
       <span>{label}</span>
-      <span className="tabular-nums">{formatCurrency(total)}</span>
+      <span className="tabular-nums">{formatCurrency(displayTotal)}</span>
     </button>
   )
 }
