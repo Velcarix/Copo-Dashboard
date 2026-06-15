@@ -10,7 +10,7 @@ function modifiersKey(mods: CartItemModifier[]): string {
 
 function computeTotals(items: CartItem[], discount: CartDiscount | null) {
   const subtotal = items.reduce((sum, item) => {
-    const itemTotal = (item.unitPrice + item.modifiers.reduce((s, m) => s + m.priceDelta, 0)) * item.quantity
+    const itemTotal = (item.unitPrice + (item.modifiers ?? []).reduce((s, m) => s + m.priceDelta, 0)) * item.quantity
     return sum + itemTotal
   }, 0)
 

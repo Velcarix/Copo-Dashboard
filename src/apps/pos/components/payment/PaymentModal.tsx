@@ -501,7 +501,7 @@ export function PaymentModal({ onSuccess, onClose, editMode, amountToCharge }: P
         <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
 
         {printData.items.map(item => {
-          const modTotal = item.modifiers.reduce((s, m) => s + m.priceDelta, 0)
+          const modTotal = (item.modifiers ?? []).reduce((s, m) => s + m.priceDelta, 0)
           const lineTotal = (item.unitPrice + modTotal) * item.quantity
           return (
             <div key={item.localId} style={{ marginBottom: 6 }}>
@@ -509,7 +509,7 @@ export function PaymentModal({ onSuccess, onClose, editMode, amountToCharge }: P
                 <span>{item.quantity}x {item.productName}</span>
                 <span>{formatCurrency(lineTotal)}</span>
               </div>
-              {item.modifiers.map(m => (
+              {(item.modifiers ?? []).map(m => (
                 <div key={m.optionId} style={{ fontSize: 10, paddingLeft: 12, color: '#555' }}>
                   + {m.optionName}
                 </div>
