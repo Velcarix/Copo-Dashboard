@@ -611,26 +611,31 @@ function ModifierGroupEditor({
 
 // ── Product modal (full configurator) ─────────────────────────────────────────
 
+type ModalProduct = Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true })
+
 function ProductModal({
   product,
   onSave,
   onClose,
 }: {
-  product: Product | 'new'
+  product: ModalProduct
   onSave: (data: Omit<Product, 'id'> & { id?: string }) => Promise<void>
   onClose: () => void
 }) {
   const isNew = product === 'new'
+  const isDuplicate = typeof product !== 'string' && '_duplicate' in product
+  const existingProduct = !isNew && !isDuplicate ? product as Product : null
+
   const [form, setForm] = useState<Omit<Product, 'id'>>(
     isNew ? emptyProduct() : {
-      name: product.name,
-      description: product.description,
-      category: product.category,
-      basePrice: product.basePrice,
-      active: product.active,
-      imageUrl: product.imageUrl,
-      ingredients: product.ingredients ?? [],
-      modifierGroups: product.modifierGroups ?? [],
+      name: (product as Omit<Product, 'id'>).name,
+      description: (product as Omit<Product, 'id'>).description,
+      category: (product as Omit<Product, 'id'>).category,
+      basePrice: (product as Omit<Product, 'id'>).basePrice,
+      active: (product as Omit<Product, 'id'>).active,
+      imageUrl: (product as Omit<Product, 'id'>).imageUrl,
+      ingredients: (product as Omit<Product, 'id'>).ingredients ?? [],
+      modifierGroups: (product as Omit<Product, 'id'>).modifierGroups ?? [],
     }
   )
   const branchId = useAuthStore(s => s.branchId)
@@ -652,7 +657,7 @@ function ProductModal({
     const id = uid()
     const newGroup: ModifierGroupConfig = {
       id,
-      productId: isNew ? 'new' : (product as Product).id,
+      productId: existingProduct ? existingProduct.id : 'new',
       name: '',
       inputType: ModifierInputType.SELECT,
       required: true,
@@ -698,7 +703,7 @@ function ProductModal({
       await onSave({
         ...form,
         modifierGroups: buildModifierGroups(form.modifierGroups),
-        id: isNew ? undefined : (product as Product).id,
+        id: existingProduct ? existingProduct.id : undefined,
       })
       onClose()
     } catch (err) {
@@ -721,7 +726,7 @@ function ProductModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[var(--color-border)]">
           <h2 className="font-bold text-[var(--color-text-primary)] text-lg">
-            {isNew ? 'Nuevo producto' : `Editar — ${(product as Product).name}`}
+            {isNew ? 'Nuevo producto' : isDuplicate ? `Duplicar — ${form.name.replace(' (copia)', '')}` : `Editar — ${existingProduct!.name}`}
           </h2>
           <button type="button" onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xl leading-none px-1">×</button>
         </div>
@@ -970,7 +975,7 @@ export function ProductsPage() {
   const branchId = useAuthStore(s => s.branchId)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<Product | 'new' | null>(null)
+  const [modal, setModal] = useState<Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true }) | null>(null)
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState<ProductCategory | 'ALL'>('ALL')
 
@@ -1010,6 +1015,20 @@ export function ProductsPage() {
   async function handleToggle(p: Product) {
     try { await api.put(`/api/v1/products/${p.id}`, { active: !p.active }) } catch { /* optimistic */ }
     setProducts(prev => prev.map(x => x.id === p.id ? { ...x, active: !x.active } : x))
+  }
+
+  function handleDuplicate(p: Product) {
+    setModal({
+      _duplicate: true,
+      name: `${p.name} (copia)`,
+      description: p.description,
+      category: p.category,
+      basePrice: p.basePrice,
+      active: p.active,
+      imageUrl: null,
+      ingredients: p.ingredients.map(ing => ({ ...ing, id: uid() })),
+      modifierGroups: p.modifierGroups.map(mg => ({ ...mg, id: uid(), productId: 'new' })),
+    })
   }
 
   const filtered = products.filter(p => {
@@ -1227,9 +1246,14 @@ export function ProductsPage() {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
-                    Editar
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => handleDuplicate(p)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline">
+                      Duplicar
+                    </button>
+                    <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
+                      Editar
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
