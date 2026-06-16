@@ -737,7 +737,7 @@ function ProductModal({
 
   async function handleSave() {
     if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
-    if (form.basePrice <= 0) { setError('El precio debe ser mayor a 0'); return }
+    if (form.basePrice < 0) { setError('El precio no puede ser negativo'); return }
     const emptyGroup = form.modifierGroups.find(g => !g.name.trim())
     if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
     const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
@@ -995,7 +995,7 @@ function ProductModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || !form.name.trim() || form.basePrice <= 0}
+            disabled={saving || !form.name.trim() || form.basePrice < 0}
             className="flex-1 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             {saving ? 'Guardando…' : 'Guardar producto'}
