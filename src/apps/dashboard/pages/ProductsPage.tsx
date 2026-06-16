@@ -674,6 +674,8 @@ function ProductModal({
   async function handleSave() {
     if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
     if (form.basePrice <= 0) { setError('El precio debe ser mayor a 0'); return }
+    const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
+    if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
     setSaving(true)
     setError('')
     try {
