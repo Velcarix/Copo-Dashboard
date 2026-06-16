@@ -671,15 +671,35 @@ function ProductModal({
     setForm(f => ({ ...f, modifierGroups: f.modifierGroups.filter(g => g.id !== id) }))
   }
 
+  function buildModifierGroups(groups: ModifierGroupConfig[]) {
+    return groups.map(g => ({
+      ...g,
+      options: 'options' in g && g.options
+        ? g.options.map(o => ({
+            ...o,
+            ingredientMode: o.ingredientMode
+              ? o.ingredientMode.toUpperCase() as 'NONE' | 'MULTIPLY' | 'CUSTOM'
+              : undefined,
+          }))
+        : undefined,
+    }))
+  }
+
   async function handleSave() {
     if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
     if (form.basePrice <= 0) { setError('El precio debe ser mayor a 0'); return }
+    const emptyGroup = form.modifierGroups.find(g => !g.name.trim())
+    if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
     const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
     if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
     setSaving(true)
     setError('')
     try {
-      await onSave({ ...form, id: isNew ? undefined : (product as Product).id })
+      await onSave({
+        ...form,
+        modifierGroups: buildModifierGroups(form.modifierGroups),
+        id: isNew ? undefined : (product as Product).id,
+      })
       onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Error al guardar')
