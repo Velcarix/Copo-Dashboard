@@ -449,11 +449,13 @@ function ModifierGroupEditor({
   group,
   onChange,
   onRemove,
+  onDuplicate,
   inventoryItems,
 }: {
   group: ModifierGroupConfig
   onChange: (g: ModifierGroupConfig) => void
   onRemove: () => void
+  onDuplicate: () => void
   inventoryItems?: InventoryItem[]
 }) {
   function addOption() {
@@ -527,13 +529,40 @@ function ModifierGroupEditor({
               <input
                 type="checkbox"
                 checked={group.multiple}
-                onChange={e => onChange({ ...group, multiple: e.target.checked })}
+                onChange={e => onChange({ ...group, multiple: e.target.checked, maxSelections: e.target.checked ? group.maxSelections : undefined })}
               />
               Múltiple selección
             </label>
+            {group.multiple && hasOptions && (
+              <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                <span>Límite:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  placeholder="∞"
+                  value={group.maxSelections ?? ''}
+                  onChange={e => {
+                    const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1)
+                    onChange({ ...group, maxSelections: val })
+                  }}
+                  className="w-14 px-1.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-center"
+                />
+              </label>
+            )}
           </div>
         </div>
-        <button type="button" onClick={onRemove} className="text-[var(--color-danger)] text-sm mt-1 px-1">✕</button>
+        <div className="flex items-center gap-1 mt-1">
+          <button
+            type="button"
+            onClick={onDuplicate}
+            title="Duplicar grupo"
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] text-sm px-1 transition-colors"
+          >
+            ⧉
+          </button>
+          <button type="button" onClick={onRemove} className="text-[var(--color-danger)] text-sm px-1">✕</button>
+        </div>
       </div>
 
       {/* Options (SELECT / SIZE) */}
@@ -674,6 +703,22 @@ function ProductModal({
 
   function removeGroup(id: string) {
     setForm(f => ({ ...f, modifierGroups: f.modifierGroups.filter(g => g.id !== id) }))
+  }
+
+  function duplicateGroup(id: string) {
+    const original = form.modifierGroups.find(g => g.id === id)
+    if (!original) return
+    const newId = uid()
+    const duped = {
+      ...original,
+      id: newId,
+      name: original.name ? `${original.name} (copia)` : '',
+      sortOrder: form.modifierGroups.length,
+      ...('options' in original && Array.isArray((original as any).options)
+        ? { options: (original as any).options.map((o: any) => ({ ...o, id: uid(), groupId: newId })) }
+        : {}),
+    } as ModifierGroupConfig
+    setForm(f => ({ ...f, modifierGroups: [...f.modifierGroups, duped] }))
   }
 
   function buildModifierGroups(groups: ModifierGroupConfig[]) {
@@ -911,6 +956,7 @@ function ProductModal({
                   group={group}
                   onChange={g => updateGroup(group.id, g)}
                   onRemove={() => removeGroup(group.id)}
+                  onDuplicate={() => duplicateGroup(group.id)}
                   inventoryItems={inventoryItems}
                 />
               ))}
