@@ -529,26 +529,43 @@ function ModifierGroupEditor({
               <input
                 type="checkbox"
                 checked={group.multiple}
-                onChange={e => onChange({ ...group, multiple: e.target.checked, maxSelections: e.target.checked ? group.maxSelections : undefined })}
+                onChange={e => onChange({ ...group, multiple: e.target.checked, minSelections: undefined, maxSelections: undefined })}
               />
               Múltiple selección
             </label>
             {group.multiple && hasOptions && (
-              <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
-                <span>Límite:</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="99"
-                  placeholder="∞"
-                  value={group.maxSelections ?? ''}
-                  onChange={e => {
-                    const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1)
-                    onChange({ ...group, maxSelections: val })
-                  }}
-                  className="w-14 px-1.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-center"
-                />
-              </label>
+              <>
+                <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                  <span>Mín:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="1"
+                    value={group.minSelections ?? ''}
+                    onChange={e => {
+                      const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1)
+                      onChange({ ...group, minSelections: val })
+                    }}
+                    className="w-14 px-1.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-center"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                  <span>Máx:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="∞"
+                    value={group.maxSelections ?? ''}
+                    onChange={e => {
+                      const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1)
+                      onChange({ ...group, maxSelections: val })
+                    }}
+                    className="w-14 px-1.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-center"
+                  />
+                </label>
+              </>
             )}
           </div>
         </div>

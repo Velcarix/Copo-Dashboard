@@ -274,6 +274,7 @@ interface ModifierGroupConfigBase {
   name: string
   required: boolean
   multiple: boolean
+  minSelections?: number
   maxSelections?: number
   sortOrder: number
 }
