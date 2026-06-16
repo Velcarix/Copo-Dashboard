@@ -174,6 +174,11 @@ export function EmployeesPage() {
   const [showPinModal, setShowPinModal] = useState(false)
   const [pinError, setPinError]         = useState('')
 
+  // Delete state
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+  const [deleting, setDeleting]         = useState(false)
+  const [deleteError, setDeleteError]   = useState('')
+
   useEffect(() => {
     if (!branchId) { setLoading(false); return }
     api.get<{ data: Employee[] }>(`/api/v1/employees?branchId=${branchId}`)
@@ -262,6 +267,26 @@ export function EmployeesPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await api.delete(`/api/v1/employees/${deleteTarget.id}`)
+      setEmployees(prev => prev.filter(e => e.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        setEmployees(prev => prev.filter(e => e.id !== deleteTarget.id))
+        setDeleteTarget(null)
+      } else {
+        setDeleteError(err instanceof ApiError ? err.message : 'Error al eliminar')
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   function handlePinConfirm(pin: string) {
     // DEV: bypass PIN check
     if (import.meta.env.DEV) {
@@ -336,25 +361,34 @@ export function EmployeesPage() {
                 </td>
                 <td className="px-4 py-3">
                   {emp.role !== EmployeeRole.OWNER && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm({
-                          name: emp.name,
-                          role: emp.role,
-                          pin: '',
-                          hasPin: emp.hasPin,
-                          isShared: emp.isShared,
-                          canSkipShiftOpen: emp.canSkipShiftOpen,
-                          canSkipShiftClose: emp.canSkipShiftClose,
-                        })
-                        setEditEmployee(emp)
-                        setError('')
-                      }}
-                      className="text-xs text-[var(--color-accent)] hover:underline"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm({
+                            name: emp.name,
+                            role: emp.role,
+                            pin: '',
+                            hasPin: emp.hasPin,
+                            isShared: emp.isShared,
+                            canSkipShiftOpen: emp.canSkipShiftOpen,
+                            canSkipShiftClose: emp.canSkipShiftClose,
+                          })
+                          setEditEmployee(emp)
+                          setError('')
+                        }}
+                        className="text-xs text-[var(--color-accent)] hover:underline"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteTarget(emp); setDeleteError('') }}
+                        className="text-xs text-[var(--color-danger)] hover:underline"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -478,6 +512,39 @@ export function EmployeesPage() {
           onCancel={() => { setShowPinModal(false); setPinError('') }}
           error={pinError}
         />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setDeleteTarget(null); setDeleteError('') }} />
+          <div className="relative z-10 w-full max-w-xs bg-[var(--color-surface)] rounded-2xl p-5 shadow-xl text-center">
+            <span className="text-3xl">🗑️</span>
+            <h3 className="font-bold text-[var(--color-text-primary)] mt-2">Eliminar empleado</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mt-1">
+              ¿Eliminar a <strong className="text-[var(--color-text-primary)]">{deleteTarget.name}</strong>?
+              <br />Esta acción no se puede deshacer.
+            </p>
+            {deleteError && <p className="text-xs text-[var(--color-danger)] mt-2">{deleteError}</p>}
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => { setDeleteTarget(null); setDeleteError('') }}
+                className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2 rounded-xl bg-[var(--color-danger)] text-white text-sm font-bold disabled:opacity-40"
+              >
+                {deleting ? '…' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
