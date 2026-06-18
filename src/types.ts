@@ -277,6 +277,7 @@ interface ModifierGroupConfigBase {
   minSelections?: number
   maxSelections?: number
   sortOrder: number
+  conditionalOnOptionId?: string | null
 }
 
 export interface ModifierGroupConfigSelect extends ModifierGroupConfigBase {

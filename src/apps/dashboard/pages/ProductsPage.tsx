@@ -451,12 +451,14 @@ function ModifierGroupEditor({
   onRemove,
   onDuplicate,
   inventoryItems,
+  allGroups,
 }: {
   group: ModifierGroupConfig
   onChange: (g: ModifierGroupConfig) => void
   onRemove: () => void
   onDuplicate: () => void
   inventoryItems?: InventoryItem[]
+  allGroups?: ModifierGroupConfig[]
 }) {
   function addOption() {
     if (group.inputType === ModifierInputType.SELECT || group.inputType === ModifierInputType.SIZE) {
@@ -504,7 +506,7 @@ function ModifierGroupEditor({
               value={group.inputType}
               onChange={e => {
                 const t = e.target.value as ModifierInputType
-                const base = { id: group.id, productId: group.productId, name: group.name, required: group.required, multiple: group.multiple, sortOrder: group.sortOrder }
+                const base = { id: group.id, productId: group.productId, name: group.name, required: group.required, multiple: group.multiple, sortOrder: group.sortOrder, conditionalOnOptionId: group.conditionalOnOptionId }
                 if (t === ModifierInputType.SELECT || t === ModifierInputType.SIZE) {
                   onChange({ ...base, inputType: t, options: [] } as ModifierGroupConfig)
                 } else {
@@ -568,6 +570,30 @@ function ModifierGroupEditor({
               </>
             )}
           </div>
+          {/* Selector condicional: solo si hay otros grupos con opciones */}
+          {allGroups && allGroups.some(g => g.id !== group.id && 'options' in g && (g as { options?: unknown[] }).options?.length) && (
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs text-[var(--color-text-muted)] shrink-0">Activo:</span>
+              <select
+                value={group.conditionalOnOptionId ?? ''}
+                onChange={e => onChange({ ...group, conditionalOnOptionId: e.target.value || null })}
+                className="flex-1 min-w-0 px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+              >
+                <option value="">Siempre</option>
+                {allGroups
+                  .filter(g => g.id !== group.id && 'options' in g && (g as { options?: ModifierOptionConfig[] }).options?.length)
+                  .flatMap(g => {
+                    const opts = (g as { options: ModifierOptionConfig[] }).options
+                    return opts.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        Solo si eligen "{opt.name}" en "{g.name}"
+                      </option>
+                    ))
+                  })
+                }
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 mt-1">
           <button
@@ -731,6 +757,7 @@ function ProductModal({
       id: newId,
       name: original.name ? `${original.name} (copia)` : '',
       sortOrder: form.modifierGroups.length,
+      conditionalOnOptionId: null,
       ...('options' in original && Array.isArray((original as any).options)
         ? { options: (original as any).options.map((o: any) => ({ ...o, id: uid(), groupId: newId })) }
         : {}),
@@ -975,6 +1002,7 @@ function ProductModal({
                   onRemove={() => removeGroup(group.id)}
                   onDuplicate={() => duplicateGroup(group.id)}
                   inventoryItems={inventoryItems}
+                  allGroups={form.modifierGroups}
                 />
               ))}
               <button
