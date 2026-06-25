@@ -3,9 +3,9 @@ import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
 import { useAuthStore } from '@/shared/store/authStore'
 
-// DEV mock — in production from auth JWT / settings
-// Only affects whether WAITER role (comandero tablet) is assignable
 const HAS_COMANDERO = true
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Employee {
   id: string
@@ -14,9 +14,146 @@ interface Employee {
   active: boolean
   hasPin: boolean
   isShared: boolean
+  canAccessPOS: boolean
+  canAccessComandero: boolean
+  canAccessKitchen: boolean
+  canAccessDashboard: boolean
+  canManageTables: boolean
+  canAddTables: boolean
+  canApplyDiscounts: boolean
+  canCancelOrders: boolean
+  canViewReports: boolean
+  canManageInventory: boolean
+  canManageEmployees: boolean
+  canManageProducts: boolean
+  canIssueInvoices: boolean
   canSkipShiftOpen: boolean
   canSkipShiftClose: boolean
 }
+
+interface EmployeeForm {
+  name: string
+  role: EmployeeRole
+  pin: string
+  hasPin: boolean
+  isShared: boolean
+  canAccessPOS: boolean
+  canAccessComandero: boolean
+  canAccessKitchen: boolean
+  canAccessDashboard: boolean
+  canManageTables: boolean
+  canAddTables: boolean
+  canApplyDiscounts: boolean
+  canCancelOrders: boolean
+  canViewReports: boolean
+  canManageInventory: boolean
+  canManageEmployees: boolean
+  canManageProducts: boolean
+  canIssueInvoices: boolean
+  canSkipShiftOpen: boolean
+  canSkipShiftClose: boolean
+}
+
+type PermKey = keyof Omit<EmployeeForm, 'name' | 'role' | 'pin' | 'hasPin'>
+
+// ── Role defaults ─────────────────────────────────────────────────────────────
+
+const ROLE_DEFAULTS: Record<EmployeeRole, Omit<EmployeeForm, 'name' | 'role' | 'pin' | 'hasPin'>> = {
+  [EmployeeRole.CASHIER]: {
+    isShared: false,
+    canAccessPOS: true,   canAccessComandero: false, canAccessKitchen: false, canAccessDashboard: false,
+    canManageTables: false, canAddTables: false,      canApplyDiscounts: false, canCancelOrders: false,
+    canViewReports: false, canManageInventory: false, canManageEmployees: false, canManageProducts: false,
+    canIssueInvoices: false, canSkipShiftOpen: false, canSkipShiftClose: false,
+  },
+  [EmployeeRole.WAITER]: {
+    isShared: false,
+    canAccessPOS: true,   canAccessComandero: true,  canAccessKitchen: false, canAccessDashboard: false,
+    canManageTables: true,  canAddTables: false,     canApplyDiscounts: false, canCancelOrders: false,
+    canViewReports: false, canManageInventory: false, canManageEmployees: false, canManageProducts: false,
+    canIssueInvoices: false, canSkipShiftOpen: true,  canSkipShiftClose: true,
+  },
+  [EmployeeRole.KITCHEN]: {
+    isShared: false,
+    canAccessPOS: false,  canAccessComandero: false, canAccessKitchen: true,  canAccessDashboard: false,
+    canManageTables: false, canAddTables: false,     canApplyDiscounts: false, canCancelOrders: false,
+    canViewReports: false, canManageInventory: false, canManageEmployees: false, canManageProducts: false,
+    canIssueInvoices: false, canSkipShiftOpen: true,  canSkipShiftClose: true,
+  },
+  [EmployeeRole.ADMIN]: {
+    isShared: false,
+    canAccessPOS: true,   canAccessComandero: true,  canAccessKitchen: true,  canAccessDashboard: true,
+    canManageTables: true,  canAddTables: true,      canApplyDiscounts: true,  canCancelOrders: true,
+    canViewReports: true,  canManageInventory: true,  canManageEmployees: true,  canManageProducts: true,
+    canIssueInvoices: true,  canSkipShiftOpen: true,  canSkipShiftClose: true,
+  },
+  [EmployeeRole.OWNER]: {
+    isShared: false,
+    canAccessPOS: true,   canAccessComandero: true,  canAccessKitchen: true,  canAccessDashboard: true,
+    canManageTables: true,  canAddTables: true,      canApplyDiscounts: true,  canCancelOrders: true,
+    canViewReports: true,  canManageInventory: true,  canManageEmployees: true,  canManageProducts: true,
+    canIssueInvoices: true,  canSkipShiftOpen: true,  canSkipShiftClose: true,
+  },
+}
+
+const emptyForm = (role: EmployeeRole = EmployeeRole.CASHIER): EmployeeForm => ({
+  name: '',
+  role,
+  pin: '',
+  hasPin: false,
+  ...ROLE_DEFAULTS[role],
+})
+
+// ── Permission groups ─────────────────────────────────────────────────────────
+
+interface PermGroup {
+  label: string
+  perms: { key: PermKey; label: string; hint: string; sensitive?: boolean }[]
+}
+
+const PERM_GROUPS: PermGroup[] = [
+  {
+    label: 'Acceso a módulos',
+    perms: [
+      { key: 'canAccessPOS',        label: 'POS (mostrador)',        hint: 'Puede usar la pantalla de ventas en mostrador' },
+      { key: 'canAccessComandero',  label: 'Comandero (mesas)',      hint: 'Puede tomar órdenes en las mesas' },
+      { key: 'canAccessKitchen',    label: 'Pantalla de cocina',     hint: 'Puede ver y actualizar órdenes en cocina' },
+      { key: 'canAccessDashboard',  label: 'Panel de administración', hint: 'Puede entrar al panel de configuración', sensitive: true },
+    ],
+  },
+  {
+    label: 'Ventas',
+    perms: [
+      { key: 'canApplyDiscounts',   label: 'Aplicar descuentos',     hint: 'Puede reducir el precio de productos o totales' },
+      { key: 'canCancelOrders',     label: 'Cancelar órdenes',       hint: 'Puede cancelar una orden ya creada' },
+      { key: 'canIssueInvoices',    label: 'Emitir facturas (CFDI)', hint: 'Puede solicitar factura fiscal al cliente' },
+    ],
+  },
+  {
+    label: 'Turnos',
+    perms: [
+      { key: 'canSkipShiftOpen',    label: 'Saltarse apertura de turno', hint: 'Entra directo al POS sin declarar fondo inicial', sensitive: true },
+      { key: 'canSkipShiftClose',   label: 'Saltarse cierre de turno',   hint: 'Sale del POS sin cerrar ni contar efectivo', sensitive: true },
+    ],
+  },
+  {
+    label: 'Gestión',
+    perms: [
+      { key: 'canManageProducts',   label: 'Gestionar productos',    hint: 'Puede agregar, editar y desactivar productos', sensitive: true },
+      { key: 'canManageTables',     label: 'Gestionar mesas',        hint: 'Puede mover y editar mesas existentes' },
+      { key: 'canAddTables',        label: 'Agregar nuevas mesas',   hint: 'Puede crear mesas adicionales en el plano', sensitive: true },
+      { key: 'canManageInventory',  label: 'Gestionar inventario',   hint: 'Puede ajustar stock e ingresar merma', sensitive: true },
+      { key: 'canManageEmployees',  label: 'Gestionar empleados',    hint: 'Puede crear, editar y desactivar perfiles', sensitive: true },
+      { key: 'canViewReports',      label: 'Ver reportes',           hint: 'Puede acceder a reportes de ventas y turnos' },
+    ],
+  },
+  {
+    label: 'Terminal',
+    perms: [
+      { key: 'isShared',            label: 'Perfil compartido',      hint: 'Un PIN que comparten varias personas en la misma terminal', sensitive: true },
+    ],
+  },
+]
 
 const ROLE_LABELS: Record<EmployeeRole, string> = {
   [EmployeeRole.OWNER]:   'Dueño',
@@ -26,46 +163,36 @@ const ROLE_LABELS: Record<EmployeeRole, string> = {
   [EmployeeRole.CASHIER]: 'Cajero',
 }
 
-// Roles that the admin can assign (OWNER is set at account creation, never reassigned)
 const ASSIGNABLE_ROLES = Object.values(EmployeeRole).filter(r => r !== EmployeeRole.OWNER)
 
 const MOCK_EMPLOYEES: Employee[] = [
-  { id: 'e1', name: 'Roberto García',  role: EmployeeRole.OWNER,   active: true,  hasPin: false, isShared: false, canSkipShiftOpen: true,  canSkipShiftClose: true  },
-  { id: 'e2', name: 'María López',     role: EmployeeRole.CASHIER, active: true,  hasPin: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
-  { id: 'e3', name: 'Carlos Pérez',    role: EmployeeRole.CASHIER, active: true,  hasPin: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
-  { id: 'e4', name: 'Terminal Bar',    role: EmployeeRole.CASHIER, active: true,  hasPin: true,  isShared: true,  canSkipShiftOpen: true,  canSkipShiftClose: false },
+  {
+    id: 'e1', name: 'Roberto García', role: EmployeeRole.OWNER, active: true, hasPin: false,
+    ...ROLE_DEFAULTS[EmployeeRole.OWNER],
+  },
+  {
+    id: 'e2', name: 'María López', role: EmployeeRole.CASHIER, active: true, hasPin: true,
+    ...ROLE_DEFAULTS[EmployeeRole.CASHIER],
+  },
+  {
+    id: 'e3', name: 'Carlos Pérez', role: EmployeeRole.CASHIER, active: true, hasPin: true,
+    ...ROLE_DEFAULTS[EmployeeRole.CASHIER],
+  },
 ]
 
-interface EmployeeForm {
-  name: string
-  role: EmployeeRole
-  pin: string
-  hasPin: boolean
-  isShared: boolean
-  canSkipShiftOpen: boolean
-  canSkipShiftClose: boolean
-}
+// ── isSensitive ───────────────────────────────────────────────────────────────
 
-const emptyForm = (): EmployeeForm => ({
-  name: '',
-  role: EmployeeRole.CASHIER,
-  pin: '',
-  hasPin: false,
-  isShared: false,
-  canSkipShiftOpen: false,
-  canSkipShiftClose: false,
-})
-
-/** Settings that are "sensitive" and require admin PIN confirmation */
 function isSensitive(form: EmployeeForm, original: Employee | null): boolean {
   if (form.role === EmployeeRole.ADMIN) return true
-  if (form.isShared && !original?.isShared) return true
-  if (form.canSkipShiftOpen && !original?.canSkipShiftOpen) return true
-  if (form.canSkipShiftClose && !original?.canSkipShiftClose) return true
-  return false
+  const sensitiveKeys: PermKey[] = [
+    'isShared', 'canSkipShiftOpen', 'canSkipShiftClose',
+    'canAccessDashboard', 'canManageProducts', 'canAddTables',
+    'canManageInventory', 'canManageEmployees',
+  ]
+  return sensitiveKeys.some(k => form[k] && !original?.[k])
 }
 
-// ── Toggle component ──────────────────────────────────────────────────────────
+// ── ToggleRow ─────────────────────────────────────────────────────────────────
 
 interface ToggleRowProps {
   label: string
@@ -77,9 +204,9 @@ interface ToggleRowProps {
 
 function ToggleRow({ label, hint, checked, onChange, sensitive }: ToggleRowProps) {
   return (
-    <label className="flex items-start gap-3 cursor-pointer group">
+    <label className="flex items-start gap-3 cursor-pointer">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
           {sensitive && (
             <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
@@ -89,7 +216,6 @@ function ToggleRow({ label, hint, checked, onChange, sensitive }: ToggleRowProps
         </div>
         <p className="text-xs text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{hint}</p>
       </div>
-      {/* Toggle switch */}
       <div
         className={[
           'relative flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 mt-0.5',
@@ -118,7 +244,6 @@ interface PinModalProps {
 
 function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
   const [pin, setPin] = useState('')
-
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
@@ -127,7 +252,7 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
           <span className="text-3xl">🔐</span>
           <h3 className="font-bold text-[var(--color-text-primary)] mt-2">Confirmar con PIN</h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            Ingresa tu PIN de administrador para aplicar esta configuración
+            Ingresa tu PIN de administrador para aplicar los cambios marcados
           </p>
         </div>
         <input
@@ -170,11 +295,9 @@ export function EmployeesPage() {
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
 
-  // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false)
   const [pinError, setPinError]         = useState('')
 
-  // Delete state
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
   const [deleting, setDeleting]         = useState(false)
   const [deleteError, setDeleteError]   = useState('')
@@ -199,6 +322,14 @@ export function EmployeesPage() {
     setPinError('')
   }
 
+  function handleRoleChange(newRole: EmployeeRole) {
+    setForm(f => ({ ...f, role: newRole, ...ROLE_DEFAULTS[newRole] }))
+  }
+
+  function togglePerm(key: PermKey) {
+    setForm(f => ({ ...f, [key]: !f[key] }))
+  }
+
   async function persistSave() {
     setSaving(true)
     setError('')
@@ -208,6 +339,19 @@ export function EmployeesPage() {
       pin: form.pin || undefined,
       branchId: branchId ?? '',
       isShared: form.isShared,
+      canAccessPOS: form.canAccessPOS,
+      canAccessComandero: form.canAccessComandero,
+      canAccessKitchen: form.canAccessKitchen,
+      canAccessDashboard: form.canAccessDashboard,
+      canManageTables: form.canManageTables,
+      canAddTables: form.canAddTables,
+      canApplyDiscounts: form.canApplyDiscounts,
+      canCancelOrders: form.canCancelOrders,
+      canViewReports: form.canViewReports,
+      canManageInventory: form.canManageInventory,
+      canManageEmployees: form.canManageEmployees,
+      canManageProducts: form.canManageProducts,
+      canIssueInvoices: form.canIssueInvoices,
       canSkipShiftOpen: form.canSkipShiftOpen,
       canSkipShiftClose: form.canSkipShiftClose,
     }
@@ -217,33 +361,17 @@ export function EmployeesPage() {
         setEmployees(prev => [...prev, res.data])
       } else if (editEmployee) {
         const res = await api.put<{ data: Employee }>(`/api/v1/employees/${(editEmployee as Employee).id}`, payload)
-        setEmployees(prev => prev.map(e => {
-          if (e.id === (editEmployee as Employee).id) {
-            // Merge response with existing data to avoid losing fields like hasPin
-            // if the server response is partial.
-            const hasPinBefore = e.hasPin || (e as any).has_pin || (e as any).hasPassword;
-            const updated = { ...e, ...res.data };
-            // If the user provided a NEW pin, or they already had one, ensure it's marked
-            updated.hasPin = !!(form.pin || hasPinBefore || updated.hasPin || (updated as any).has_pin);
-            return updated;
-          }
-          return e;
-        }))
+        setEmployees(prev => prev.map(e =>
+          e.id === (editEmployee as Employee).id
+            ? { ...e, ...res.data, hasPin: !!(form.pin || e.hasPin) }
+            : e
+        ))
       }
       closeModal()
     } catch (err) {
       if (import.meta.env.DEV) {
         const id = editEmployee === 'new' ? crypto.randomUUID() : (editEmployee as Employee).id
-        const saved: Employee = {
-          id,
-          name: form.name,
-          role: form.role,
-          active: true,
-          hasPin: form.pin ? true : form.hasPin,
-          isShared: form.isShared,
-          canSkipShiftOpen: form.canSkipShiftOpen,
-          canSkipShiftClose: form.canSkipShiftClose,
-        }
+        const saved: Employee = { id, ...payload, active: true, hasPin: !!(form.pin || form.hasPin) } as Employee
         setEmployees(prev =>
           editEmployee === 'new' ? [...prev, saved] : prev.map(e => e.id === id ? saved : e)
         )
@@ -260,10 +388,9 @@ export function EmployeesPage() {
     if (!form.name.trim()) return
     const original = editEmployee !== 'new' && editEmployee ? editEmployee : null
     if (isSensitive(form, original)) {
-      // Sensitive settings — ask for admin PIN first
       setShowPinModal(true)
     } else {
-      persistSave()
+      void persistSave()
     }
   }
 
@@ -288,15 +415,13 @@ export function EmployeesPage() {
   }
 
   function handlePinConfirm(pin: string) {
-    // DEV: bypass PIN check
     if (import.meta.env.DEV) {
       setShowPinModal(false)
-      persistSave()
+      void persistSave()
       return
     }
-    // PROD: verify admin PIN against backend
     api.post('/api/v1/auth/verify-admin-pin', { pin })
-      .then(() => { setShowPinModal(false); persistSave() })
+      .then(() => { setShowPinModal(false); void persistSave() })
       .catch(() => setPinError('PIN incorrecto'))
   }
 
@@ -306,11 +431,11 @@ export function EmployeesPage() {
     </div>
   )
 
-  // WAITER role only makes sense if the business has the comandero plan (waiter tablets)
-  // Tables in POS are available to everyone, but the comandero mobile app is plan-gated
   const rolesForPlan = HAS_COMANDERO
     ? ASSIGNABLE_ROLES
     : ASSIGNABLE_ROLES.filter(r => r !== EmployeeRole.WAITER)
+
+  const originalForSensitive = editEmployee !== 'new' && editEmployee ? editEmployee : null
 
   return (
     <div className="space-y-4">
@@ -345,14 +470,9 @@ export function EmployeesPage() {
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{ROLE_LABELS[emp.role]}</td>
                 <td className="px-4 py-3">
-                  {(() => {
-                    const hasPin = emp.hasPin || (emp as any).has_pin || (emp as any).hasPassword;
-                    return (
-                      <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
-                        {hasPin ? 'Configurado' : 'Sin PIN'}
-                      </span>
-                    )
-                  })()}
+                  <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', emp.hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
+                    {emp.hasPin ? 'Configurado' : 'Sin PIN'}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', emp.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
@@ -371,6 +491,19 @@ export function EmployeesPage() {
                             pin: '',
                             hasPin: emp.hasPin,
                             isShared: emp.isShared,
+                            canAccessPOS: emp.canAccessPOS,
+                            canAccessComandero: emp.canAccessComandero,
+                            canAccessKitchen: emp.canAccessKitchen,
+                            canAccessDashboard: emp.canAccessDashboard,
+                            canManageTables: emp.canManageTables,
+                            canAddTables: emp.canAddTables,
+                            canApplyDiscounts: emp.canApplyDiscounts,
+                            canCancelOrders: emp.canCancelOrders,
+                            canViewReports: emp.canViewReports,
+                            canManageInventory: emp.canManageInventory,
+                            canManageEmployees: emp.canManageEmployees,
+                            canManageProducts: emp.canManageProducts,
+                            canIssueInvoices: emp.canIssueInvoices,
                             canSkipShiftOpen: emp.canSkipShiftOpen,
                             canSkipShiftClose: emp.canSkipShiftClose,
                           })
@@ -406,8 +539,8 @@ export function EmployeesPage() {
               {editEmployee === 'new' ? 'Nuevo empleado' : 'Editar empleado'}
             </h2>
 
+            {/* Basic info */}
             <div className="space-y-3">
-              {/* Name */}
               <input
                 type="text"
                 value={form.name}
@@ -416,10 +549,9 @@ export function EmployeesPage() {
                 className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
               />
 
-              {/* Role */}
               <select
                 value={form.role}
-                onChange={e => setForm(f => ({ ...f, role: e.target.value as EmployeeRole }))}
+                onChange={e => handleRoleChange(e.target.value as EmployeeRole)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
               >
                 {rolesForPlan.map(r => (
@@ -427,7 +559,6 @@ export function EmployeesPage() {
                 ))}
               </select>
 
-              {/* PIN */}
               <div className="relative">
                 <input
                   type="password"
@@ -440,47 +571,46 @@ export function EmployeesPage() {
                 />
                 {form.hasPin && !form.pin && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                     <span className="text-[10px] font-semibold text-green-600">Guardado</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Permission toggles */}
-            <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-4">
+            {/* Permission groups */}
+            <div className="mt-5 space-y-5">
               <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
-                Configuración del perfil
+                Permisos personalizados
+              </p>
+              <p className="text-xs text-[var(--color-text-muted)] -mt-3">
+                Precargados según el rol. Ajusta según necesites.
               </p>
 
-              <ToggleRow
-                label="Perfil compartido"
-                hint="Un PIN que comparten varias personas en la misma terminal"
-                checked={form.isShared}
-                onChange={v => setForm(f => ({ ...f, isShared: v }))}
-                sensitive
-              />
-
-              <ToggleRow
-                label="Puede saltarse apertura de turno"
-                hint="Entra directo al POS sin declarar fondo inicial"
-                checked={form.canSkipShiftOpen}
-                onChange={v => setForm(f => ({ ...f, canSkipShiftOpen: v }))}
-                sensitive
-              />
-
-              <ToggleRow
-                label="Puede saltarse cierre de turno"
-                hint="Sale del POS sin cerrar ni contar efectivo"
-                checked={form.canSkipShiftClose}
-                onChange={v => setForm(f => ({ ...f, canSkipShiftClose: v }))}
-                sensitive
-              />
+              {PERM_GROUPS.map(group => (
+                <div key={group.label}>
+                  <p className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+                    {group.label}
+                  </p>
+                  <div className="space-y-3 pl-1">
+                    {group.perms.map(perm => (
+                      <ToggleRow
+                        key={perm.key}
+                        label={perm.label}
+                        hint={perm.hint}
+                        checked={form[perm.key] as boolean}
+                        onChange={() => togglePerm(perm.key)}
+                        sensitive={perm.sensitive}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Sensitive settings notice */}
-            {isSensitive(form, editEmployee !== 'new' && editEmployee ? editEmployee : null) && (
-              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+            {/* Sensitive notice */}
+            {isSensitive(form, originalForSensitive) && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-4">
                 🔐 Se pedirá tu PIN de administrador para confirmar los cambios marcados.
               </p>
             )}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api, ApiError } from '@/shared/lib/api'
@@ -74,12 +74,6 @@ export function LoginPage() {
             {loading ? '…' : 'Entrar'}
           </button>
         </form>
-        <p className="mt-6 text-center text-sm text-[var(--color-text-secondary)]">
-          ¿Eres cajero?{' '}
-          <Link to="/pin" className="text-[var(--color-accent)] font-semibold">
-            Ingresa con PIN
-          </Link>
-        </p>
       </div>
     </div>
   )
