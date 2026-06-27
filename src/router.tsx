@@ -7,6 +7,7 @@ import { EmployeeRole } from '@shared-types'
 import { RouteGuard } from '@/shared/components/RouteGuard'
 import { LicenseGatePage } from '@/apps/auth/LicenseGatePage'
 import { LoginPage } from '@/apps/auth/LoginPage'
+import { BranchSelectorPage } from '@/apps/auth/BranchSelectorPage'
 import { POSLayout } from '@/apps/pos/layout/POSLayout'
 import { POSMain } from '@/apps/pos/pages/POSMain'
 import { ShiftOpen } from '@/apps/pos/pages/ShiftOpen'
@@ -34,6 +35,12 @@ export const router = createHashRouter([
   { path: '/', element: <Navigate to="/license" replace /> },
   { path: '/license', element: <LicenseGatePage /> },
   { path: '/login', element: <LoginPage /> },
+  {
+    element: <RouteGuard requireAuth />,
+    children: [
+      { path: '/branch-select', element: <BranchSelectorPage /> },
+    ],
+  },
   {
     element: <RouteGuard requireAuth />,
     children: [

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
+import type { AvailableBranch } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
@@ -24,18 +25,26 @@ export function LoginPage() {
       const res = await api.post<ApiResponse<{
         accessToken: string
         user: { id: string; name: string; role: EmployeeRole }
-        branch: { id: string; name: string }
+        branch: { id: string; name: string; businessId: string }
         permissions: ProfilePermissions
+        availableBranches?: AvailableBranch[]
       }>>(
         '/api/v1/auth/login',
         { username, password, licenseKey },
         { skipAuth: true },
       )
-      const { user, accessToken, branch, permissions } = res.data
-      setAuth(user, accessToken, permissions, branch.id)
-      setBranches([{ id: branch.id, name: branch.name, city: '', isActive: true }])
+      const { user, accessToken, branch, permissions, availableBranches } = res.data
+      setAuth(user, accessToken, permissions, branch.id, availableBranches ?? [])
+
+      const allBranches = (availableBranches ?? [{ id: branch.id, name: branch.name, role: user.role }])
+      setBranches(allBranches.map(b => ({ id: b.id, name: b.name, city: '', isActive: true })))
       setSelected(branch.id)
-      navigate('/dashboard')
+
+      if ((availableBranches ?? []).length > 1) {
+        navigate('/branch-select')
+      } else {
+        navigate('/dashboard')
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Error de conexión')
     } finally {

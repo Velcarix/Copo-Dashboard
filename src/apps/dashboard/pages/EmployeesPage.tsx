@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
 import { useAuthStore } from '@/shared/store/authStore'
+import { useBranchStore } from '@/shared/store/branchStore'
 
 // DEV mock — in production from auth JWT / settings
 // Only affects whether WAITER role (comandero tablet) is assignable
@@ -16,6 +17,19 @@ interface Employee {
   isShared: boolean
   canSkipShiftOpen: boolean
   canSkipShiftClose: boolean
+  branches?: EmployeeBranchEntry[]
+}
+
+interface EmployeeBranchEntry {
+  id: string
+  name: string
+  role: EmployeeRole
+  isPrimary: boolean
+}
+
+interface BranchAccessForm {
+  branchId: string
+  role: EmployeeRole
 }
 
 const ROLE_LABELS: Record<EmployeeRole, string> = {
@@ -44,6 +58,7 @@ interface EmployeeForm {
   isShared: boolean
   canSkipShiftOpen: boolean
   canSkipShiftClose: boolean
+  branchAccess: BranchAccessForm[]
 }
 
 const emptyForm = (): EmployeeForm => ({
@@ -54,6 +69,7 @@ const emptyForm = (): EmployeeForm => ({
   isShared: false,
   canSkipShiftOpen: false,
   canSkipShiftClose: false,
+  branchAccess: [],
 })
 
 /** Settings that are "sensitive" and require admin PIN confirmation */
@@ -163,12 +179,14 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
 
 export function EmployeesPage() {
   const branchId = useAuthStore(s => s.branchId)
+  const allBranches = useBranchStore(s => s.branches)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading]     = useState(true)
   const [editEmployee, setEditEmployee] = useState<Employee | null | 'new'>(null)
   const [form, setForm]           = useState<EmployeeForm>(emptyForm())
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
+  const [loadingBranchAccess, setLoadingBranchAccess] = useState(false)
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false)
@@ -193,10 +211,54 @@ export function EmployeesPage() {
     setError('')
   }
 
+  async function openEdit(emp: Employee) {
+    setForm({
+      name: emp.name,
+      role: emp.role,
+      pin: '',
+      hasPin: emp.hasPin,
+      isShared: emp.isShared,
+      canSkipShiftOpen: emp.canSkipShiftOpen,
+      canSkipShiftClose: emp.canSkipShiftClose,
+      branchAccess: [],
+    })
+    setEditEmployee(emp)
+    setError('')
+
+    // Fetch current branch access for this employee
+    setLoadingBranchAccess(true)
+    try {
+      const res = await api.get<{ data: EmployeeBranchEntry[] }>(`/api/v1/employees/${emp.id}/branches`)
+      const additional = res.data.filter(b => !b.isPrimary)
+      setForm(f => ({ ...f, branchAccess: additional.map(b => ({ branchId: b.id, role: b.role })) }))
+    } catch {
+      // Not critical — leave branchAccess empty
+    } finally {
+      setLoadingBranchAccess(false)
+    }
+  }
+
   function closeModal() {
     setEditEmployee(null)
     setShowPinModal(false)
     setPinError('')
+  }
+
+  async function syncBranchAccess(employeeId: string, desiredAccess: BranchAccessForm[], originalAccess: BranchAccessForm[]) {
+    const originalIds = new Set(originalAccess.map(a => a.branchId))
+    const desiredIds = new Set(desiredAccess.map(a => a.branchId))
+
+    const toAdd = desiredAccess.filter(a => !originalIds.has(a.branchId))
+    const toRemove = originalAccess.filter(a => !desiredIds.has(a.branchId))
+
+    await Promise.all([
+      ...toAdd.map(a =>
+        api.post(`/api/v1/employees/${employeeId}/branches`, { targetBranchId: a.branchId, role: a.role })
+      ),
+      ...toRemove.map(a =>
+        api.delete(`/api/v1/employees/${employeeId}/branches/${a.branchId}`)
+      ),
+    ])
   }
 
   async function persistSave() {
@@ -214,20 +276,28 @@ export function EmployeesPage() {
     try {
       if (editEmployee === 'new') {
         const res = await api.post<{ data: Employee }>('/api/v1/employees', payload)
-        setEmployees(prev => [...prev, res.data])
+        const newEmployee = res.data
+        if (form.branchAccess.length > 0) {
+          await syncBranchAccess(newEmployee.id, form.branchAccess, [])
+        }
+        setEmployees(prev => [...prev, { ...newEmployee, branches: form.branchAccess.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })) }])
       } else if (editEmployee) {
-        const res = await api.put<{ data: Employee }>(`/api/v1/employees/${(editEmployee as Employee).id}`, payload)
+        const emp = editEmployee as Employee
+        const res = await api.put<{ data: Employee }>(`/api/v1/employees/${emp.id}`, payload)
+        const originalAccess = (emp.branches ?? []).filter(b => !b.isPrimary).map(b => ({ branchId: b.id, role: b.role }))
+        await syncBranchAccess(emp.id, form.branchAccess, originalAccess)
         setEmployees(prev => prev.map(e => {
-          if (e.id === (editEmployee as Employee).id) {
-            // Merge response with existing data to avoid losing fields like hasPin
-            // if the server response is partial.
-            const hasPinBefore = e.hasPin || (e as any).has_pin || (e as any).hasPassword;
-            const updated = { ...e, ...res.data };
-            // If the user provided a NEW pin, or they already had one, ensure it's marked
-            updated.hasPin = !!(form.pin || hasPinBefore || updated.hasPin || (updated as any).has_pin);
-            return updated;
+          if (e.id === emp.id) {
+            const hasPinBefore = e.hasPin || (e as any).has_pin || (e as any).hasPassword
+            const updated = { ...e, ...res.data }
+            updated.hasPin = !!(form.pin || hasPinBefore || updated.hasPin || (updated as any).has_pin)
+            updated.branches = [
+              { id: branchId ?? '', name: allBranches.find(b => b.id === branchId)?.name ?? '', role: form.role, isPrimary: true },
+              ...form.branchAccess.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })),
+            ]
+            return updated
           }
-          return e;
+          return e
         }))
       }
       closeModal()
@@ -327,7 +397,7 @@ export function EmployeesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)]">
-              {['Nombre', 'Rol', 'PIN', 'Estado', ''].map(h => (
+              {['Nombre', 'Rol', 'Sucursales', 'PIN', 'Estado', ''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{h}</th>
               ))}
             </tr>
@@ -344,6 +414,27 @@ export function EmployeesPage() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{ROLE_LABELS[emp.role]}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {emp.branches && emp.branches.length > 0 ? (
+                      emp.branches.map(b => (
+                        <span
+                          key={b.id}
+                          className={[
+                            'text-[10px] px-2 py-0.5 rounded-full font-medium',
+                            b.isPrimary
+                              ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                              : 'bg-[var(--color-border)] text-[var(--color-text-secondary)]',
+                          ].join(' ')}
+                        >
+                          {b.name}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">—</span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3">
                   {(() => {
                     const hasPin = emp.hasPin || (emp as any).has_pin || (emp as any).hasPassword;
@@ -364,19 +455,7 @@ export function EmployeesPage() {
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => {
-                          setForm({
-                            name: emp.name,
-                            role: emp.role,
-                            pin: '',
-                            hasPin: emp.hasPin,
-                            isShared: emp.isShared,
-                            canSkipShiftOpen: emp.canSkipShiftOpen,
-                            canSkipShiftClose: emp.canSkipShiftClose,
-                          })
-                          setEditEmployee(emp)
-                          setError('')
-                        }}
+                        onClick={() => openEdit(emp)}
                         className="text-xs text-[var(--color-accent)] hover:underline"
                       >
                         Editar
@@ -446,6 +525,75 @@ export function EmployeesPage() {
                 )}
               </div>
             </div>
+
+            {/* Branch access — only when Business has multiple branches */}
+            {allBranches.length > 1 && (
+              <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+                <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+                  Acceso a sucursales
+                </p>
+                {loadingBranchAccess ? (
+                  <p className="text-xs text-[var(--color-text-muted)]">Cargando…</p>
+                ) : (
+                  <div className="space-y-2">
+                    {allBranches.map(branch => {
+                      const isCurrent = branch.id === branchId
+                      const accessEntry = form.branchAccess.find(a => a.branchId === branch.id)
+                      const isChecked = isCurrent || !!accessEntry
+
+                      function toggleBranch(checked: boolean) {
+                        setForm(f => ({
+                          ...f,
+                          branchAccess: checked
+                            ? [...f.branchAccess, { branchId: branch.id, role: EmployeeRole.CASHIER }]
+                            : f.branchAccess.filter(a => a.branchId !== branch.id),
+                        }))
+                      }
+
+                      function changeRole(role: EmployeeRole) {
+                        setForm(f => ({
+                          ...f,
+                          branchAccess: f.branchAccess.map(a =>
+                            a.branchId === branch.id ? { ...a, role } : a
+                          ),
+                        }))
+                      }
+
+                      return (
+                        <div key={branch.id} className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            id={`branch-${branch.id}`}
+                            checked={isChecked}
+                            disabled={isCurrent}
+                            onChange={e => toggleBranch(e.target.checked)}
+                            className="w-4 h-4 accent-[var(--color-accent)]"
+                          />
+                          <label
+                            htmlFor={`branch-${branch.id}`}
+                            className={['flex-1 text-sm', isCurrent ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)] cursor-pointer'].join(' ')}
+                          >
+                            {branch.name}
+                            {isCurrent && <span className="ml-1.5 text-[10px] text-[var(--color-accent)]">(actual)</span>}
+                          </label>
+                          {isChecked && !isCurrent && (
+                            <select
+                              value={accessEntry?.role ?? EmployeeRole.CASHIER}
+                              onChange={e => changeRole(e.target.value as EmployeeRole)}
+                              className="text-xs px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                            >
+                              {rolesForPlan.map(r => (
+                                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Permission toggles */}
             <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-4">
