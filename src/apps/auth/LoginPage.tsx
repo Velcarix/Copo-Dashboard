@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api, ApiError } from '@/shared/lib/api'
@@ -8,9 +8,9 @@ import type { ApiResponse, ProfilePermissions } from '@shared-types'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const setAuth = useAuthStore(s => s.setAuth)
+  const { setAuth, licenseKey } = useAuthStore()
   const { setBranches, setSelected } = useBranchStore()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -28,7 +28,7 @@ export function LoginPage() {
         permissions: ProfilePermissions
       }>>(
         '/api/v1/auth/login',
-        { email, password },
+        { username, password, licenseKey },
         { skipAuth: true },
       )
       const { user, accessToken, branch, permissions } = res.data
@@ -47,13 +47,13 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
       <div className="w-full max-w-sm">
         <h1 className="text-3xl font-display font-bold text-[var(--color-accent)] mb-1">COPO</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mb-8">Panel del dueño</p>
+        <p className="text-sm text-[var(--color-text-secondary)] mb-8">Inicia sesión</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="Correo electrónico"
+            type="text"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            placeholder="Usuario"
             required
             className="w-full px-4 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
           />
@@ -74,12 +74,6 @@ export function LoginPage() {
             {loading ? '…' : 'Entrar'}
           </button>
         </form>
-        <p className="mt-6 text-center text-sm text-[var(--color-text-secondary)]">
-          ¿Eres cajero?{' '}
-          <Link to="/pin" className="text-[var(--color-accent)] font-semibold">
-            Ingresa con PIN
-          </Link>
-        </p>
       </div>
     </div>
   )

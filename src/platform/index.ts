@@ -19,6 +19,7 @@ declare global {
       readFile: (opts: { filePath: string }) => Promise<string | null>
       setKiosk: (enabled: boolean) => Promise<void>
       openExternal: (url: string) => Promise<void>
+      openLicenseFile: () => Promise<string | null>
     }
   }
 }

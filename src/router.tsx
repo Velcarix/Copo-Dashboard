@@ -5,8 +5,8 @@
 import { createHashRouter, Navigate } from 'react-router-dom'
 import { EmployeeRole } from '@shared-types'
 import { RouteGuard } from '@/shared/components/RouteGuard'
+import { LicenseGatePage } from '@/apps/auth/LicenseGatePage'
 import { LoginPage } from '@/apps/auth/LoginPage'
-import { PinPage } from '@/apps/auth/PinPage'
 import { POSLayout } from '@/apps/pos/layout/POSLayout'
 import { POSMain } from '@/apps/pos/pages/POSMain'
 import { ShiftOpen } from '@/apps/pos/pages/ShiftOpen'
@@ -31,9 +31,9 @@ import { KitchenLayout } from '@/apps/kitchen/KitchenLayout'
 import { KitchenDisplayPage } from '@/apps/kitchen/KitchenDisplayPage'
 
 export const router = createHashRouter([
-  { path: '/', element: <Navigate to="/dashboard" replace /> },
+  { path: '/', element: <Navigate to="/license" replace /> },
+  { path: '/license', element: <LicenseGatePage /> },
   { path: '/login', element: <LoginPage /> },
-  { path: '/pin', element: <PinPage /> },
   {
     element: <RouteGuard requireAuth />,
     children: [

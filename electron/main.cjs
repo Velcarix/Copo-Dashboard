@@ -155,6 +155,20 @@ ipcMain.handle('shell:openExternal', async (_event, url) => {
   await shell.openExternal(url)
 })
 
+/**
+ * Open native file picker for .copo license files.
+ * Returns the file contents as a hex string, or null if cancelled.
+ */
+ipcMain.handle('license:openFile', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Selecciona tu archivo de licencia',
+    filters: [{ name: 'Licencia Copo', extensions: ['copo'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+  return fs.readFileSync(result.filePaths[0]).toString('hex')
+})
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
