@@ -10,6 +10,7 @@ const HAS_COMANDERO = true
 
 interface Employee {
   id: string
+  branchId?: string
   name: string
   username?: string
   role: EmployeeRole
@@ -280,9 +281,17 @@ export function EmployeesPage() {
   async function persistSave() {
     setSaving(true)
     setError('')
+
+    // Solo enviar username si el usuario lo cambió explícitamente
+    const originalUsername = editEmployee !== 'new'
+      ? ((editEmployee as Employee).username ?? deriveUsername((editEmployee as Employee).name))
+      : null
+    const newUsername = form.username || deriveUsername(form.name)
+    const usernameChanged = newUsername !== originalUsername
+
     const payload = {
       name: form.name,
-      username: form.username || deriveUsername(form.name),
+      username: (editEmployee === 'new' || usernameChanged) ? newUsername : undefined,
       email: form.email || undefined,
       role: form.role,
       password: form.password || undefined,
@@ -427,8 +436,13 @@ export function EmployeesPage() {
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{ROLE_LABELS[emp.role]}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
-                    {emp.branches && emp.branches.length > 0 ? (
-                      emp.branches.map(b => (
+                    {(() => {
+                      const branchList: EmployeeBranchEntry[] = emp.branches && emp.branches.length > 0
+                        ? emp.branches
+                        : emp.branchId
+                          ? [{ id: emp.branchId, name: allBranches.find(b => b.id === emp.branchId)?.name ?? emp.branchId, role: emp.role, isPrimary: true }]
+                          : []
+                      return branchList.length > 0 ? branchList.map(b => (
                         <span
                           key={b.id}
                           className={[
@@ -440,10 +454,8 @@ export function EmployeesPage() {
                         >
                           {b.name}
                         </span>
-                      ))
-                    ) : (
-                      <span className="text-[10px] text-[var(--color-text-muted)]">—</span>
-                    )}
+                      )) : <span className="text-[10px] text-[var(--color-text-muted)]">—</span>
+                    })()}
                   </div>
                 </td>
                 <td className="px-4 py-3">
