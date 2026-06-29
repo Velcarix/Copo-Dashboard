@@ -99,7 +99,7 @@ function ToggleRow({ label, hint, checked, onChange, sensitive }: ToggleRowProps
           <span className="text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
           {sensitive && (
             <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
-              PIN admin
+              Contraseña admin
             </span>
           )}
         </div>
@@ -141,20 +141,18 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
       <div className="relative z-10 w-full max-w-xs bg-[var(--color-surface)] rounded-2xl p-5 shadow-2xl">
         <div className="text-center mb-4">
           <span className="text-3xl">🔐</span>
-          <h3 className="font-bold text-[var(--color-text-primary)] mt-2">Confirmar con PIN</h3>
+          <h3 className="font-bold text-[var(--color-text-primary)] mt-2">Confirmar con contraseña</h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            Ingresa tu PIN de administrador para aplicar esta configuración
+            Ingresa tu contraseña de administrador para aplicar esta configuración
           </p>
         </div>
         <input
           type="password"
-          inputMode="numeric"
-          maxLength={4}
           value={pin}
-          onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          placeholder="••••"
+          onChange={e => setPin(e.target.value)}
+          placeholder="Contraseña"
           autoFocus
-          className="w-full text-center text-2xl tracking-[0.5em] px-3 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)]"
+          className="w-full px-3 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)]"
         />
         {error && <p className="text-xs text-[var(--color-danger)] text-center mt-2">{error}</p>}
         <div className="flex gap-2 mt-4">
@@ -164,7 +162,7 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
           <button
             type="button"
             onClick={() => onConfirm(pin)}
-            disabled={pin.length < 4}
+            disabled={!pin.trim()}
             className="flex-1 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold disabled:opacity-40"
           >
             Confirmar
@@ -397,7 +395,7 @@ export function EmployeesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)]">
-              {['Nombre', 'Rol', 'Sucursales', 'PIN', 'Estado', ''].map(h => (
+              {['Nombre', 'Rol', 'Sucursales', 'Contraseña', 'Estado', ''].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{h}</th>
               ))}
             </tr>
@@ -440,7 +438,7 @@ export function EmployeesPage() {
                     const hasPin = emp.hasPin || (emp as any).has_pin || (emp as any).hasPassword;
                     return (
                       <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
-                        {hasPin ? 'Configurado' : 'Sin PIN'}
+                        {hasPin ? 'Configurado' : 'Sin contraseña'}
                       </span>
                     )
                   })()}
@@ -506,15 +504,13 @@ export function EmployeesPage() {
                 ))}
               </select>
 
-              {/* PIN */}
+              {/* Contraseña */}
               <div className="relative">
                 <input
                   type="password"
                   value={form.pin}
-                  onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                  placeholder="PIN de 4 dígitos (vacío = no cambiar)"
-                  inputMode="numeric"
-                  maxLength={4}
+                  onChange={e => setForm(f => ({ ...f, pin: e.target.value }))}
+                  placeholder="Contraseña (vacío = no cambiar)"
                   className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                 />
                 {form.hasPin && !form.pin && (
@@ -526,8 +522,8 @@ export function EmployeesPage() {
               </div>
             </div>
 
-            {/* Branch access — only when Business has multiple branches */}
-            {allBranches.length > 1 && (
+            {/* Branch access */}
+            {allBranches.length >= 1 && (
               <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
                 <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
                   Acceso a sucursales
@@ -603,7 +599,7 @@ export function EmployeesPage() {
 
               <ToggleRow
                 label="Perfil compartido"
-                hint="Un PIN que comparten varias personas en la misma terminal"
+                hint="Una contraseña que comparten varias personas en la misma terminal"
                 checked={form.isShared}
                 onChange={v => setForm(f => ({ ...f, isShared: v }))}
                 sensitive
@@ -629,7 +625,7 @@ export function EmployeesPage() {
             {/* Sensitive settings notice */}
             {isSensitive(form, editEmployee !== 'new' && editEmployee ? editEmployee : null) && (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-                🔐 Se pedirá tu PIN de administrador para confirmar los cambios marcados.
+                🔐 Se pedirá tu contraseña de administrador para confirmar los cambios marcados.
               </p>
             )}
 
