@@ -13,15 +13,6 @@ const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.WEIGHT]:  'Peso / gramos',
 }
 
-const CATEGORY_LABELS: Record<ProductCategory, string> = {
-  [ProductCategory.ICE_CREAM]: 'Helados',
-  [ProductCategory.COFFEE]:    'Café',
-  [ProductCategory.PASTRY]:    'Pasteles',
-  [ProductCategory.COMBO]:     'Combos',
-  [ProductCategory.EXTRA]:     'Extras',
-  [ProductCategory.SNACK]:     'Snacks',
-  [ProductCategory.BEVERAGE]:  'Bebidas',
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -697,6 +688,7 @@ function ProductModal({
   const isNew = product === 'new'
   const isDuplicate = typeof product !== 'string' && '_duplicate' in product
   const existingProduct = !isNew && !isDuplicate ? product as Product : null
+  const allCats = useSortedCategories(true)
 
   const [form, setForm] = useState<Omit<Product, 'id'>>(
     isNew ? emptyProduct() : {
@@ -929,13 +921,9 @@ function ProductModal({
                         onChange={e => setForm(f => ({ ...f, category: e.target.value as ProductCategory }))}
                         className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                       >
-                        {Object.values(ProductCategory).map(c => (
-                          <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
+                        {allCats.map(cat => (
+                          <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
                         ))}
-                        {/* custom category not in enum */}
-                        {!Object.values(ProductCategory).includes(form.category as ProductCategory) && (
-                          <option value={form.category}>{form.category}</option>
-                        )}
                       </select>
                       <button
                         type="button"
@@ -1068,7 +1056,7 @@ export function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true }) | null>(null)
   const [search, setSearch] = useState('')
-  const [filterCat, setFilterCat] = useState<ProductCategory | 'ALL'>('ALL')
+  const [filterCat, setFilterCat] = useState<string>('ALL')
 
   // Category management panel
   const [showCatPanel, setShowCatPanel] = useState(false)
@@ -1285,12 +1273,12 @@ export function ProductsPage() {
         />
         <select
           value={filterCat}
-          onChange={e => setFilterCat(e.target.value as ProductCategory | 'ALL')}
+          onChange={e => setFilterCat(e.target.value)}
           className="px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
         >
           <option value="ALL">Todas las categorías</option>
-          {Object.values(ProductCategory).map(c => (
-            <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
+          {allCats.map(cat => (
+            <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
           ))}
         </select>
       </div>
@@ -1321,7 +1309,7 @@ export function ProductsPage() {
                     <span className="font-medium text-[var(--color-text-primary)]">{p.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{CATEGORY_LABELS[p.category as import('@shared-types').ProductCategory] ?? p.category}</td>
+                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{allCats.find(c => c.key === p.category)?.label ?? p.category}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{formatCurrency(p.basePrice)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">
                   {(p.modifierGroups ?? []).length > 0
