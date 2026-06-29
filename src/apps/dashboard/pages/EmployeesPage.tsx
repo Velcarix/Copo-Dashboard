@@ -54,6 +54,7 @@ const MOCK_EMPLOYEES: Employee[] = [
 interface EmployeeForm {
   name: string
   username: string
+  email: string
   role: EmployeeRole
   password: string
   hasPin: boolean
@@ -76,6 +77,7 @@ function deriveUsername(name: string): string {
 const emptyForm = (): EmployeeForm => ({
   name: '',
   username: '',
+  email: '',
   role: EmployeeRole.CASHIER,
   password: '',
   hasPin: false,
@@ -227,6 +229,7 @@ export function EmployeesPage() {
     setForm({
       name: emp.name,
       username: emp.username ?? deriveUsername(emp.name),
+      email: (emp as any).email ?? '',
       role: emp.role,
       password: '',
       hasPin: emp.hasPin,
@@ -280,6 +283,7 @@ export function EmployeesPage() {
     const payload = {
       name: form.name,
       username: form.username || deriveUsername(form.name),
+      email: form.email || undefined,
       role: form.role,
       password: form.password || undefined,
       branchId: branchId ?? '',
@@ -458,15 +462,15 @@ export function EmployeesPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  {emp.role !== EmployeeRole.OWNER && (
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(emp)}
-                        className="text-xs text-[var(--color-accent)] hover:underline"
-                      >
-                        Editar
-                      </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(emp)}
+                      className="text-xs text-[var(--color-accent)] hover:underline"
+                    >
+                      Editar
+                    </button>
+                    {emp.role !== EmployeeRole.OWNER && (
                       <button
                         type="button"
                         onClick={() => { setDeleteTarget(emp); setDeleteError('') }}
@@ -474,7 +478,8 @@ export function EmployeesPage() {
                       >
                         Eliminar
                       </button>
-                    </div>
+                    )}
+                  </div>
                   )}
                 </td>
               </tr>
@@ -492,59 +497,77 @@ export function EmployeesPage() {
               {editEmployee === 'new' ? 'Nuevo empleado' : 'Editar empleado'}
             </h2>
 
-            <div className="space-y-3">
-              {/* Name */}
-              <input
-                type="text"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Nombre completo"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
-              />
+            {(() => {
+              const isOwner = editEmployee !== 'new' && editEmployee !== null && (editEmployee as Employee).role === EmployeeRole.OWNER
+              return (
+                <div className="space-y-3">
+                  {/* Name */}
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="Nombre completo"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                  />
 
-              {/* Role */}
-              <select
-                value={form.role}
-                onChange={e => setForm(f => ({ ...f, role: e.target.value as EmployeeRole }))}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
-              >
-                {rolesForPlan.map(r => (
-                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                ))}
-              </select>
+                  {/* Role — oculto para OWNER */}
+                  {!isOwner && (
+                    <select
+                      value={form.role}
+                      onChange={e => setForm(f => ({ ...f, role: e.target.value as EmployeeRole }))}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                    >
+                      {rolesForPlan.map(r => (
+                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                      ))}
+                    </select>
+                  )}
 
-              {/* Username */}
-              <input
-                type="text"
-                value={form.username}
-                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                onFocus={() => {
-                  if (!form.username && form.name) setForm(f => ({ ...f, username: deriveUsername(form.name) }))
-                }}
-                placeholder="Usuario para login (ej: juan.perez)"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] font-mono"
-              />
+                  {/* Username */}
+                  <input
+                    type="text"
+                    value={form.username}
+                    onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                    onFocus={() => {
+                      if (!form.username && form.name) setForm(f => ({ ...f, username: deriveUsername(form.name) }))
+                    }}
+                    placeholder="Usuario para login (ej: juan.perez)"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] font-mono"
+                  />
 
-              {/* Contraseña */}
-              <div className="relative">
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder="Contraseña (vacío = no cambiar)"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
-                />
-                {form.hasPin && !form.password && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-                    <span className="text-[10px] font-semibold text-green-600">Guardado</span>
+                  {/* Contraseña */}
+                  <div className="relative">
+                    <input
+                      type="password"
+                      value={form.password}
+                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                      placeholder="Contraseña (vacío = no cambiar)"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                    />
+                    {form.hasPin && !form.password && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                        <span className="text-[10px] font-semibold text-green-600">Guardado</span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* Branch access */}
-            {allBranches.length >= 1 && (
+                  {/* Correo — solo para OWNER */}
+                  {isOwner && (
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="Correo electrónico"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                    />
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Branch access — oculto para OWNER */}
+            {allBranches.length >= 1 && !(editEmployee !== 'new' && editEmployee !== null && (editEmployee as Employee).role === EmployeeRole.OWNER) && (
               <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
                 <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
                   Acceso a sucursales
@@ -612,36 +635,38 @@ export function EmployeesPage() {
               </div>
             )}
 
-            {/* Permission toggles */}
-            <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-4">
-              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
-                Configuración del perfil
-              </p>
+            {/* Permission toggles — ocultos para OWNER */}
+            {(editEmployee === 'new' || (editEmployee as Employee)?.role !== EmployeeRole.OWNER) && (
+              <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-4">
+                <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
+                  Configuración del perfil
+                </p>
 
-              <ToggleRow
-                label="Perfil compartido"
-                hint="Una contraseña que comparten varias personas en la misma terminal"
-                checked={form.isShared}
-                onChange={v => setForm(f => ({ ...f, isShared: v }))}
-                sensitive
-              />
+                <ToggleRow
+                  label="Perfil compartido"
+                  hint="Una contraseña que comparten varias personas en la misma terminal"
+                  checked={form.isShared}
+                  onChange={v => setForm(f => ({ ...f, isShared: v }))}
+                  sensitive
+                />
 
-              <ToggleRow
-                label="Puede saltarse apertura de turno"
-                hint="Entra directo al POS sin declarar fondo inicial"
-                checked={form.canSkipShiftOpen}
-                onChange={v => setForm(f => ({ ...f, canSkipShiftOpen: v }))}
-                sensitive
-              />
+                <ToggleRow
+                  label="Puede saltarse apertura de turno"
+                  hint="Entra directo al POS sin declarar fondo inicial"
+                  checked={form.canSkipShiftOpen}
+                  onChange={v => setForm(f => ({ ...f, canSkipShiftOpen: v }))}
+                  sensitive
+                />
 
-              <ToggleRow
-                label="Puede saltarse cierre de turno"
-                hint="Sale del POS sin cerrar ni contar efectivo"
-                checked={form.canSkipShiftClose}
-                onChange={v => setForm(f => ({ ...f, canSkipShiftClose: v }))}
-                sensitive
-              />
-            </div>
+                <ToggleRow
+                  label="Puede saltarse cierre de turno"
+                  hint="Sale del POS sin cerrar ni contar efectivo"
+                  checked={form.canSkipShiftClose}
+                  onChange={v => setForm(f => ({ ...f, canSkipShiftClose: v }))}
+                  sensitive
+                />
+              </div>
+            )
 
             {/* Sensitive settings notice */}
             {isSensitive(form, editEmployee !== 'new' && editEmployee ? editEmployee : null) && (
