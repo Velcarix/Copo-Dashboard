@@ -689,6 +689,7 @@ function ProductModal({
   const isDuplicate = typeof product !== 'string' && '_duplicate' in product
   const existingProduct = !isNew && !isDuplicate ? product as Product : null
   const allCats = useSortedCategories(true)
+  const { add: addCat } = useCategoryStore()
 
   const [form, setForm] = useState<Omit<Product, 'id'>>(
     isNew ? emptyProduct() : {
@@ -897,7 +898,9 @@ function ProductModal({
                         className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-accent)] bg-[var(--color-bg)]"
                         onKeyDown={e => {
                           if (e.key === 'Enter' && customCatInput.trim()) {
-                            setForm(f => ({ ...f, category: customCatInput.trim() }))
+                            const key = `custom_${Date.now()}`
+                            addCat({ key, label: customCatInput.trim(), emoji: '🏷️', color: '#6b7280', hidden: false })
+                            setForm(f => ({ ...f, category: key }))
                             setShowCustomCat(false)
                           }
                           if (e.key === 'Escape') setShowCustomCat(false)
@@ -907,7 +910,9 @@ function ProductModal({
                         type="button"
                         onClick={() => {
                           if (customCatInput.trim()) {
-                            setForm(f => ({ ...f, category: customCatInput.trim() }))
+                            const key = `custom_${Date.now()}`
+                            addCat({ key, label: customCatInput.trim(), emoji: '🏷️', color: '#6b7280', hidden: false })
+                            setForm(f => ({ ...f, category: key }))
                           }
                           setShowCustomCat(false)
                         }}
@@ -1062,6 +1067,7 @@ export function ProductsPage() {
   const [showCatPanel, setShowCatPanel] = useState(false)
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
   const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
 
@@ -1208,16 +1214,27 @@ export function ProductsPage() {
                     disabled={idx === allCats.length - 1}
                     className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
                   >↓</button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`¿Eliminar la categoría "${cat.label}"? Los productos que la usan no se borrarán.`)) {
-                        removeCat(cat.key)
-                      }
-                    }}
-                    className="text-[var(--color-danger)] hover:opacity-70 transition-opacity text-xs ml-1"
-                    title="Eliminar categoría"
-                  >✕</button>
+                  {confirmDeleteKey === cat.key ? (
+                    <div className="flex items-center gap-1 ml-1">
+                      <button
+                        type="button"
+                        onClick={() => { removeCat(cat.key); setConfirmDeleteKey(null) }}
+                        className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
+                      >¿Eliminar?</button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteKey(null)}
+                        className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteKey(cat.key)}
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors text-xs ml-1"
+                      title="Eliminar categoría"
+                    >✕</button>
+                  )}
                 </div>
               )
             })}
