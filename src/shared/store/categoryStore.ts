@@ -47,8 +47,6 @@ export const useCategoryStore = create<CategoryState>()(
       },
 
       remove(key) {
-        const isDefault = CATEGORY_DEFAULTS.some(c => c.key === key)
-        if (isDefault) return
         const filtered = get().categories.filter(c => c.key !== key)
         set({ categories: filtered.map((c, i) => ({ ...c, sortOrder: i })) })
       },
