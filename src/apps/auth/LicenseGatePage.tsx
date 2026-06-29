@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 interface LicenseData {
   branchId: string
   branchName: string
+  businessName: string
   plan: string
   expiresAt: string
   daysUntilExpiry: number
@@ -79,7 +80,7 @@ export function LicenseGatePage() {
     validateLicense(body)
       .then(data => {
         const key = stored.startsWith('file:') ? stored : stored
-        setLicense(key, data.branchName)
+        setLicense(key, data.branchName, data.businessName)
         navigate('/login', { replace: true })
       })
       .catch((err: unknown) => {
@@ -102,7 +103,7 @@ export function LicenseGatePage() {
           return
         }
         const data = await validateLicense({ licenseKey: key })
-        setLicense(key, data.branchName)
+        setLicense(key, data.branchName, data.businessName)
         navigate('/login', { replace: true })
       } else {
         const fileContent = await pickLicenseFile()
@@ -112,7 +113,7 @@ export function LicenseGatePage() {
         }
         const data = await validateLicense({ fileContent })
         const stored = `file:${fileContent}`
-        setLicense(stored, data.branchName)
+        setLicense(stored, data.branchName, data.businessName)
         navigate('/login', { replace: true })
       }
     } catch (err) {

@@ -9,7 +9,7 @@ import type { ApiResponse, ProfilePermissions } from '@shared-types'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { setAuth, licenseKey } = useAuthStore()
+  const { setAuth, licenseKey, branchName, businessName, clearLicense } = useAuthStore()
   const { setBranches, setSelected } = useBranchStore()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -52,11 +52,42 @@ export function LoginPage() {
     }
   }
 
+  function handleClearLicense() {
+    clearLicense()
+    navigate('/', { replace: true })
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
       <div className="w-full max-w-sm">
         <h1 className="text-3xl font-display font-bold text-[var(--color-accent)] mb-1">COPO</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mb-8">Inicia sesión</p>
+
+        {(businessName || branchName) && (
+          <div className="mb-6 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {businessName && (
+                <p className="text-xs text-[var(--color-text-muted)] leading-tight">{businessName}</p>
+              )}
+              {branchName && (
+                <p className="text-sm font-medium text-[var(--color-text-primary)] leading-tight truncate">{branchName}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleClearLicense}
+              title="Cambiar licencia"
+              className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        <p className="text-sm text-[var(--color-text-secondary)] mb-6">Inicia sesión</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"

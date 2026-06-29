@@ -22,6 +22,7 @@ interface AuthState {
   accessToken: string | null
   branchId: string | null
   branchName: string | null
+  businessName: string | null
   shiftId: string | null
   licenseKey: string | null
   isAuthenticated: boolean
@@ -36,7 +37,7 @@ interface AuthState {
   updateAuthToken: (token: string, branchId: string, role: EmployeeRole) => void
   setPermissions: (permissions: ProfilePermissions) => void
   setShift: (shiftId: string | null) => void
-  setLicense: (key: string, branchName: string) => void
+  setLicense: (key: string, branchName: string, businessName: string) => void
   clearLicense: () => void
   logout: () => void
 }
@@ -49,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       branchId: null,
       branchName: null,
+      businessName: null,
       shiftId: null,
       licenseKey: null,
       isAuthenticated: false,
@@ -81,14 +83,14 @@ export const useAuthStore = create<AuthState>()(
         set({ shiftId })
       },
 
-      setLicense(key, branchName) {
+      setLicense(key, branchName, businessName) {
         localStorage.setItem(LICENSE_KEY, key)
-        set({ licenseKey: key, branchName })
+        set({ licenseKey: key, branchName, businessName })
       },
 
       clearLicense() {
         localStorage.removeItem(LICENSE_KEY)
-        set({ licenseKey: null, branchName: null })
+        set({ licenseKey: null, branchName: null, businessName: null })
       },
 
       logout() {
