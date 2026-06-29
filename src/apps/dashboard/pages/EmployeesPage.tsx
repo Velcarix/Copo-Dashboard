@@ -11,6 +11,7 @@ const HAS_COMANDERO = true
 interface Employee {
   id: string
   name: string
+  username?: string
   role: EmployeeRole
   active: boolean
   hasPin: boolean
@@ -52,8 +53,9 @@ const MOCK_EMPLOYEES: Employee[] = [
 
 interface EmployeeForm {
   name: string
+  username: string
   role: EmployeeRole
-  pin: string
+  password: string
   hasPin: boolean
   isShared: boolean
   canSkipShiftOpen: boolean
@@ -61,10 +63,21 @@ interface EmployeeForm {
   branchAccess: BranchAccessForm[]
 }
 
+function deriveUsername(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, '.')
+    .replace(/[^a-z0-9.]/g, '')
+}
+
 const emptyForm = (): EmployeeForm => ({
   name: '',
+  username: '',
   role: EmployeeRole.CASHIER,
-  pin: '',
+  password: '',
   hasPin: false,
   isShared: false,
   canSkipShiftOpen: false,
@@ -72,8 +85,9 @@ const emptyForm = (): EmployeeForm => ({
   branchAccess: [],
 })
 
-/** Settings that are "sensitive" and require admin PIN confirmation */
+/** Settings that are "sensitive" and require admin password confirmation */
 function isSensitive(form: EmployeeForm, original: Employee | null): boolean {
+  if (form.password) return true
   if (form.role === EmployeeRole.ADMIN) return true
   if (form.isShared && !original?.isShared) return true
   if (form.canSkipShiftOpen && !original?.canSkipShiftOpen) return true
@@ -212,8 +226,9 @@ export function EmployeesPage() {
   async function openEdit(emp: Employee) {
     setForm({
       name: emp.name,
+      username: emp.username ?? deriveUsername(emp.name),
       role: emp.role,
-      pin: '',
+      password: '',
       hasPin: emp.hasPin,
       isShared: emp.isShared,
       canSkipShiftOpen: emp.canSkipShiftOpen,
@@ -264,8 +279,9 @@ export function EmployeesPage() {
     setError('')
     const payload = {
       name: form.name,
+      username: form.username || deriveUsername(form.name),
       role: form.role,
-      pin: form.pin || undefined,
+      password: form.password || undefined,
       branchId: branchId ?? '',
       isShared: form.isShared,
       canSkipShiftOpen: form.canSkipShiftOpen,
@@ -288,7 +304,7 @@ export function EmployeesPage() {
           if (e.id === emp.id) {
             const hasPinBefore = e.hasPin || (e as any).has_pin || (e as any).hasPassword
             const updated = { ...e, ...res.data }
-            updated.hasPin = !!(form.pin || hasPinBefore || updated.hasPin || (updated as any).has_pin)
+            updated.hasPin = !!(form.password || hasPinBefore || updated.hasPin || (updated as any).has_pin)
             updated.branches = [
               { id: branchId ?? '', name: allBranches.find(b => b.id === branchId)?.name ?? '', role: form.role, isPrimary: true },
               ...form.branchAccess.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })),
@@ -307,7 +323,7 @@ export function EmployeesPage() {
           name: form.name,
           role: form.role,
           active: true,
-          hasPin: form.pin ? true : form.hasPin,
+          hasPin: form.password ? true : form.hasPin,
           isShared: form.isShared,
           canSkipShiftOpen: form.canSkipShiftOpen,
           canSkipShiftClose: form.canSkipShiftClose,
@@ -355,17 +371,10 @@ export function EmployeesPage() {
     }
   }
 
-  function handlePinConfirm(pin: string) {
-    // DEV: bypass PIN check
-    if (import.meta.env.DEV) {
-      setShowPinModal(false)
-      persistSave()
-      return
-    }
-    // PROD: verify admin PIN against backend
-    api.post('/api/v1/auth/verify-admin-pin', { pin })
+  function handlePinConfirm(password: string) {
+    api.post('/api/v1/auth/verify-admin-password', { password })
       .then(() => { setShowPinModal(false); persistSave() })
-      .catch(() => setPinError('PIN incorrecto'))
+      .catch(() => setPinError('Contraseña incorrecta'))
   }
 
   if (loading) return (
@@ -504,16 +513,28 @@ export function EmployeesPage() {
                 ))}
               </select>
 
+              {/* Username */}
+              <input
+                type="text"
+                value={form.username}
+                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                onFocus={() => {
+                  if (!form.username && form.name) setForm(f => ({ ...f, username: deriveUsername(form.name) }))
+                }}
+                placeholder="Usuario para login (ej: juan.perez)"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] font-mono"
+              />
+
               {/* Contraseña */}
               <div className="relative">
                 <input
                   type="password"
-                  value={form.pin}
-                  onChange={e => setForm(f => ({ ...f, pin: e.target.value }))}
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   placeholder="Contraseña (vacío = no cambiar)"
                   className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                 />
-                {form.hasPin && !form.pin && (
+                {form.hasPin && !form.password && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
                     <span className="text-[10px] font-semibold text-green-600">Guardado</span>
