@@ -492,7 +492,6 @@ export function EmployeesPage() {
                       </button>
                     )}
                   </div>
-                  )}
                 </td>
               </tr>
             ))}
@@ -678,7 +677,7 @@ export function EmployeesPage() {
                   sensitive
                 />
               </div>
-            )
+            )}
 
             {/* Sensitive settings notice */}
             {isSensitive(form, editEmployee !== 'new' && editEmployee ? editEmployee : null) && (
