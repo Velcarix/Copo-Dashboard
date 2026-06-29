@@ -4,7 +4,7 @@ import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment } from '@shared-types'
-import { useCategoryStore, useSortedCategories, CATEGORY_DEFAULTS } from '@/shared/store/categoryStore'
+import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
 
 const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.SELECT]:  'Selección (elige uno)',
@@ -1174,7 +1174,6 @@ export function ProductsPage() {
 
           <div className="space-y-1.5">
             {allCats.map((cat, idx) => {
-              const isDefault = CATEGORY_DEFAULTS.some(d => d.key === cat.key)
               return (
                 <div key={cat.key} className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
                   <input
@@ -1221,13 +1220,16 @@ export function ProductsPage() {
                     disabled={idx === allCats.length - 1}
                     className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
                   >↓</button>
-                  {!isDefault && (
-                    <button
-                      type="button"
-                      onClick={() => removeCat(cat.key)}
-                      className="text-[var(--color-danger)] hover:opacity-70 transition-opacity text-xs ml-1"
-                    >✕</button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`¿Eliminar la categoría "${cat.label}"? Los productos que la usan no se borrarán.`)) {
+                        removeCat(cat.key)
+                      }
+                    }}
+                    className="text-[var(--color-danger)] hover:opacity-70 transition-opacity text-xs ml-1"
+                    title="Eliminar categoría"
+                  >✕</button>
                 </div>
               )
             })}
