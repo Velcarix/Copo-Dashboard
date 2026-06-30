@@ -5,6 +5,7 @@ import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment } from '@shared-types'
 import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
+import { CreateComboModal } from './CreateComboModal'
 
 const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.SELECT]:  'Selección (elige uno)',
@@ -1064,6 +1065,7 @@ export function ProductsPage() {
   const [filterCat, setFilterCat] = useState<string>('ALL')
 
   // Category management panel
+  const [showComboModal, setShowComboModal] = useState(false)
   const [showCatPanel, setShowCatPanel] = useState(false)
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
@@ -1141,6 +1143,13 @@ export function ProductsPage() {
             ].join(' ')}
           >
             Categorías
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowComboModal(true)}
+            className="px-4 py-2 rounded-xl border border-[var(--color-accent)] text-[var(--color-accent)] text-sm font-bold hover:bg-[var(--color-accent)] hover:text-white transition-colors"
+          >
+            🎁 Crear combo
           </button>
           <button
             type="button"
@@ -1364,6 +1373,21 @@ export function ProductsPage() {
           product={modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {showComboModal && (
+        <CreateComboModal
+          products={products}
+          branchId={branchId ?? ''}
+          onClose={() => setShowComboModal(false)}
+          onCreated={() => {
+            setShowComboModal(false)
+            if (!branchId) return
+            api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
+              .then(res => setProducts(res.data))
+              .catch(() => {})
+          }}
         />
       )}
     </div>
