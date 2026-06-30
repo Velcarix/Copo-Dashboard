@@ -15,6 +15,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 }
 
 interface LicenseData {
+  licenseKey: string
   branchId: string
   branchName: string
   businessName: string
@@ -73,14 +74,16 @@ export function LicenseGatePage() {
       return
     }
 
+    // Support legacy format "file:<hex>" stored before this fix
     const body = stored.startsWith('file:')
       ? { fileContent: stored.slice(5) }
       : { licenseKey: stored }
 
     validateLicense(body)
       .then(data => {
-        const key = stored.startsWith('file:') ? stored : stored
-        setLicense(key, data.branchName, data.businessName)
+        // Always store the actual license key (migrate legacy "file:..." entries)
+        localStorage.setItem(LICENSE_STORAGE_KEY, data.licenseKey)
+        setLicense(data.licenseKey, data.branchName, data.businessName)
         navigate('/login', { replace: true })
       })
       .catch((err: unknown) => {
@@ -112,8 +115,9 @@ export function LicenseGatePage() {
           return
         }
         const data = await validateLicense({ fileContent })
-        const stored = `file:${fileContent}`
-        setLicense(stored, data.branchName, data.businessName)
+        // Store the actual licenseKey so LoginPage can use it directly
+        localStorage.setItem(LICENSE_STORAGE_KEY, data.licenseKey)
+        setLicense(data.licenseKey, data.branchName, data.businessName)
         navigate('/login', { replace: true })
       }
     } catch (err) {
