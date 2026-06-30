@@ -14,6 +14,21 @@ const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.WEIGHT]:  'Peso / gramos',
 }
 
+// Fallback label map — used when categoryStore hasn't loaded yet or is missing entries.
+const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
+  [ProductCategory.ICE_CREAM]: 'Helados',
+  [ProductCategory.COFFEE]:    'Cafés',
+  [ProductCategory.BEVERAGE]:  'Bebidas',
+  [ProductCategory.PASTRY]:    'Pasteles',
+  [ProductCategory.SNACK]:     'Snacks',
+  [ProductCategory.COMBO]:     'Combos',
+  [ProductCategory.EXTRA]:     'Extras',
+}
+
+function resolveCategoryLabel(key: string, allCats: { key: string; label: string }[]): string {
+  return allCats.find(c => c.key === key)?.label ?? CATEGORY_LABEL_FALLBACK[key] ?? key
+}
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1335,7 +1350,7 @@ export function ProductsPage() {
                     <span className="font-medium text-[var(--color-text-primary)]">{p.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{allCats.find(c => c.key === p.category)?.label ?? p.category}</td>
+                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{resolveCategoryLabel(p.category, allCats)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{formatCurrency(p.basePrice)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">
                   {(p.modifierGroups ?? []).length > 0
