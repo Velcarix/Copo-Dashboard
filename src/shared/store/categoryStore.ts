@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { ProductCategory } from '@shared-types'
+import { api } from '@/shared/lib/api'
 
 export interface CategoryMeta {
+  id: string
   key: string
   label: string
   emoji: string
@@ -11,63 +11,118 @@ export interface CategoryMeta {
   hidden: boolean
 }
 
-export const CATEGORY_DEFAULTS: CategoryMeta[] = [
-  { key: ProductCategory.ICE_CREAM, label: 'Helados',  emoji: '🍦', color: '#6366f1', sortOrder: 0, hidden: false },
-  { key: ProductCategory.COFFEE,    label: 'Cafés',    emoji: '☕',  color: '#92400e', sortOrder: 1, hidden: false },
-  { key: ProductCategory.BEVERAGE,  label: 'Bebidas',  emoji: '🥤',  color: '#0ea5e9', sortOrder: 2, hidden: false },
-  { key: ProductCategory.PASTRY,    label: 'Pasteles', emoji: '🥐',  color: '#d97706', sortOrder: 3, hidden: false },
-  { key: ProductCategory.SNACK,     label: 'Snacks',   emoji: '🍿',  color: '#16a34a', sortOrder: 4, hidden: false },
-  { key: ProductCategory.COMBO,     label: 'Combos',   emoji: '🎁',  color: '#7c3aed', sortOrder: 5, hidden: false },
-  { key: ProductCategory.EXTRA,     label: 'Extras',   emoji: '➕',  color: '#6b7280', sortOrder: 6, hidden: false },
-]
+interface ApiCategory {
+  id: string
+  key: string
+  name: string
+  emoji: string | null
+  color: string | null
+  sortOrder: number
+  hidden: boolean
+}
+
+function fromApi(c: ApiCategory): CategoryMeta {
+  return {
+    id: c.id,
+    key: c.key,
+    label: c.name,
+    emoji: c.emoji ?? '🏷️',
+    color: c.color ?? '#6366f1',
+    sortOrder: c.sortOrder,
+    hidden: c.hidden,
+  }
+}
 
 interface CategoryState {
   categories: CategoryMeta[]
-  update: (key: string, patch: Partial<Omit<CategoryMeta, 'key'>>) => void
-  add: (cat: Omit<CategoryMeta, 'sortOrder'>) => void
-  remove: (key: string) => void
-  move: (key: string, direction: 'up' | 'down') => void
-  reset: () => void
+  loaded: boolean
+  branchId: string | null
+  load: (branchId: string) => Promise<void>
+  update: (key: string, patch: Partial<Pick<CategoryMeta, 'label' | 'emoji' | 'color' | 'hidden'>>) => Promise<void>
+  add: (cat: { key: string; label: string; emoji: string; color: string; hidden: boolean }) => Promise<void>
+  remove: (key: string) => Promise<void>
+  move: (key: string, direction: 'up' | 'down') => Promise<void>
+  reset: () => Promise<void>
 }
 
-export const useCategoryStore = create<CategoryState>()(
-  persist(
-    (set, get) => ({
-      categories: CATEGORY_DEFAULTS,
+const updateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-      update(key, patch) {
-        set({
-          categories: get().categories.map(c => c.key === key ? { ...c, ...patch } : c),
-        })
-      },
+export const useCategoryStore = create<CategoryState>()((set, get) => ({
+  categories: [],
+  loaded: false,
+  branchId: null,
 
-      add(cat) {
-        const cats = get().categories
-        set({ categories: [...cats, { ...cat, sortOrder: cats.length }] })
-      },
+  async load(branchId) {
+    set({ branchId })
+    const res = await api.get<{ data: ApiCategory[] }>(`/api/v1/categories?branchId=${branchId}`)
+    set({ categories: res.data.map(fromApi), loaded: true })
+  },
 
-      remove(key) {
-        const filtered = get().categories.filter(c => c.key !== key)
-        set({ categories: filtered.map((c, i) => ({ ...c, sortOrder: i })) })
-      },
+  async update(key, patch) {
+    const { branchId, categories } = get()
+    const cat = categories.find(c => c.key === key)
+    if (!branchId || !cat) return
 
-      move(key, direction) {
-        const cats = [...get().categories].sort((a, b) => a.sortOrder - b.sortOrder)
-        const idx = cats.findIndex(c => c.key === key)
-        if (idx < 0) return
-        const target = direction === 'up' ? idx - 1 : idx + 1
-        if (target < 0 || target >= cats.length) return
-        ;[cats[idx], cats[target]] = [cats[target], cats[idx]]
-        set({ categories: cats.map((c, i) => ({ ...c, sortOrder: i })) })
-      },
+    // Optimistic update so typing in the label/color fields feels instant —
+    // the actual PUT is debounced below to avoid one request per keystroke.
+    set({ categories: get().categories.map(c => c.key === key ? { ...c, ...patch } : c) })
 
-      reset() {
-        set({ categories: CATEGORY_DEFAULTS })
-      },
-    }),
-    { name: 'copo-categories' },
-  ),
-)
+    clearTimeout(updateTimers.get(cat.id))
+    updateTimers.set(cat.id, setTimeout(() => {
+      api.put<{ data: ApiCategory }>(`/api/v1/categories/${cat.id}`, {
+        branchId,
+        ...(patch.label !== undefined ? { name: patch.label } : {}),
+        ...(patch.emoji !== undefined ? { emoji: patch.emoji } : {}),
+        ...(patch.color !== undefined ? { color: patch.color } : {}),
+        ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+      }).then(res => {
+        set({ categories: get().categories.map(c => c.id === cat.id ? fromApi(res.data) : c) })
+      })
+    }, 400))
+  },
+
+  async add(cat) {
+    const { branchId } = get()
+    if (!branchId) return
+    await api.post<{ data: ApiCategory }>('/api/v1/categories', {
+      branchId,
+      name: cat.label,
+      emoji: cat.emoji,
+      color: cat.color,
+    })
+    await get().load(branchId)
+  },
+
+  async remove(key) {
+    const { branchId, categories } = get()
+    const cat = categories.find(c => c.key === key)
+    if (!branchId || !cat) return
+    await api.delete(`/api/v1/categories/${cat.id}?branchId=${branchId}`)
+    set({ categories: categories.filter(c => c.key !== key) })
+  },
+
+  async move(key, direction) {
+    const { branchId, categories } = get()
+    if (!branchId) return
+    const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
+    const idx = sorted.findIndex(c => c.key === key)
+    if (idx < 0) return
+    const target = direction === 'up' ? idx - 1 : idx + 1
+    if (target < 0 || target >= sorted.length) return
+    ;[sorted[idx], sorted[target]] = [sorted[target], sorted[idx]]
+
+    const orderedIds = sorted.map(c => c.id)
+    const res = await api.put<{ data: ApiCategory[] }>('/api/v1/categories/reorder', { branchId, orderedIds })
+    set({ categories: res.data.map(fromApi) })
+  },
+
+  async reset() {
+    const { branchId } = get()
+    if (!branchId) return
+    const res = await api.post<{ data: ApiCategory[] }>('/api/v1/categories/reset', { branchId })
+    set({ categories: res.data.map(fromApi) })
+  },
+}))
 
 export function useSortedCategories(includeHidden = false) {
   return useCategoryStore(s =>

@@ -1,4 +1,6 @@
-import { useSortedCategories } from '@/shared/store/categoryStore'
+import { useEffect } from 'react'
+import { useAuthStore } from '@/shared/store/authStore'
+import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
 
 interface CategoryPillsProps {
   active: string
@@ -6,7 +8,14 @@ interface CategoryPillsProps {
 }
 
 export function CategoryPills({ active, onChange }: CategoryPillsProps) {
+  const branchId = useAuthStore(s => s.branchId)
+  const storeBranchId = useCategoryStore(s => s.branchId)
+  const load = useCategoryStore(s => s.load)
   const categories = useSortedCategories()
+
+  useEffect(() => {
+    if (branchId && branchId !== storeBranchId) load(branchId)
+  }, [branchId, storeBranchId, load])
 
   return (
     <div className="flex gap-1.5 overflow-x-auto scrollbar-none px-1 py-1">

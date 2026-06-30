@@ -1085,7 +1085,7 @@ export function ProductsPage() {
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
-  const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats } = useCategoryStore()
+  const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
 
   function handleAddCategory() {
@@ -1103,6 +1103,10 @@ export function ProductsPage() {
       .catch(() => { if (import.meta.env.DEV) setProducts(MOCK_PRODUCTS) })
       .finally(() => setLoading(false))
   }, [branchId])
+
+  useEffect(() => {
+    if (branchId && useCategoryStore.getState().branchId !== branchId) loadCats(branchId)
+  }, [branchId, loadCats])
 
   async function handleSave(data: Omit<Product, 'id'> & { id?: string }) {
     if (data.id) {
