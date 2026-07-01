@@ -51,11 +51,13 @@ function selectionsFromInitial(groups: ModifierGroupConfig[], initial: CartItemM
 }
 
 function isConfirmEnabled(groups: ModifierGroupConfig[], sel: Selections): boolean {
-  return groups.filter(g => g.required).every(g => {
+  return groups.every(g => {
     const s = sel[g.id]
-    if (!s) return false
+    if (!s) return !g.required
     if (g.inputType === ModifierInputType.SELECT || g.inputType === ModifierInputType.SIZE) {
-      return s.optionIds.length > 0
+      const min = g.minSelections ?? (g.required ? 1 : 0)
+      const max = g.maxSelections ?? Infinity
+      return s.optionIds.length >= min && s.optionIds.length <= max
     }
     return true
   })
@@ -147,6 +149,7 @@ export function ModifierSheet({ product, initialValues, onConfirm, onClose }: Mo
                   options={group.options}
                   selected={selections[group.id]?.optionIds ?? []}
                   multiple={group.multiple}
+                  minSelections={group.minSelections}
                   showDescription={group.inputType === ModifierInputType.SIZE}
                   onChange={optionIds => updateSel(group.id, { optionIds })}
                 />

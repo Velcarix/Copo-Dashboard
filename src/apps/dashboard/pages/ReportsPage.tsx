@@ -111,7 +111,7 @@ export function ReportsPage() {
         .finally(() => setLoading(false))
     } else {
       api.get<{ data: InventoryRow[] }>(`/api/v1/reports/inventory?branchId=${branchId}&from=${from}&to=${to}`)
-        .then(res => setInventory(res.data))
+        .then(res => setInventory(Array.isArray(res.data) ? res.data : []))
         .catch(() => { if (import.meta.env.DEV) setInventory(MOCK_INVENTORY) })
         .finally(() => setLoading(false))
     }

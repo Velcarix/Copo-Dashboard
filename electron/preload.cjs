@@ -29,4 +29,7 @@ contextBridge.exposeInMainWorld('copoNative', {
 
   /** Open a URL in the system browser */
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+
+  /** Open native file picker for .copo license file; returns hex content or null */
+  openLicenseFile: () => ipcRenderer.invoke('license:openFile'),
 })

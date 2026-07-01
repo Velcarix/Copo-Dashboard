@@ -5,15 +5,18 @@ interface SelectInputProps {
   options: ModifierOptionConfig[]
   selected: string[]
   multiple: boolean
+  minSelections?: number | null
   showDescription?: boolean
   onChange: (selected: string[]) => void
 }
 
-export function SelectInput({ options, selected, multiple, showDescription, onChange }: SelectInputProps) {
+export function SelectInput({ options, selected, multiple, minSelections, showDescription, onChange }: SelectInputProps) {
   function toggle(optionId: string) {
     if (multiple) {
       if (selected.includes(optionId)) {
-        onChange(selected.filter(id => id !== optionId))
+        const next = selected.filter(id => id !== optionId)
+        if (next.length < (minSelections ?? 0)) return
+        onChange(next)
       } else {
         onChange([...selected, optionId])
       }

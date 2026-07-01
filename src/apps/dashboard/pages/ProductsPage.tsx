@@ -4,7 +4,8 @@ import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment } from '@shared-types'
-import { useCategoryStore, useSortedCategories, CATEGORY_DEFAULTS } from '@/shared/store/categoryStore'
+import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
+import { CreateComboModal } from './CreateComboModal'
 
 const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.SELECT]:  'Selección (elige uno)',
@@ -13,15 +14,21 @@ const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.WEIGHT]:  'Peso / gramos',
 }
 
-const CATEGORY_LABELS: Record<ProductCategory, string> = {
+// Fallback label map — used when categoryStore hasn't loaded yet or is missing entries.
+const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
   [ProductCategory.ICE_CREAM]: 'Helados',
-  [ProductCategory.COFFEE]:    'Café',
+  [ProductCategory.COFFEE]:    'Cafés',
+  [ProductCategory.BEVERAGE]:  'Bebidas',
   [ProductCategory.PASTRY]:    'Pasteles',
+  [ProductCategory.SNACK]:     'Snacks',
   [ProductCategory.COMBO]:     'Combos',
   [ProductCategory.EXTRA]:     'Extras',
-  [ProductCategory.SNACK]:     'Snacks',
-  [ProductCategory.BEVERAGE]:  'Bebidas',
 }
+
+function resolveCategoryLabel(key: string, allCats: { key: string; label: string }[]): string {
+  return allCats.find(c => c.key === key)?.label ?? CATEGORY_LABEL_FALLBACK[key] ?? key
+}
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -697,6 +704,8 @@ function ProductModal({
   const isNew = product === 'new'
   const isDuplicate = typeof product !== 'string' && '_duplicate' in product
   const existingProduct = !isNew && !isDuplicate ? product as Product : null
+  const allCats = useSortedCategories(true)
+  const { add: addCat } = useCategoryStore()
 
   const [form, setForm] = useState<Omit<Product, 'id'>>(
     isNew ? emptyProduct() : {
@@ -905,7 +914,9 @@ function ProductModal({
                         className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-accent)] bg-[var(--color-bg)]"
                         onKeyDown={e => {
                           if (e.key === 'Enter' && customCatInput.trim()) {
-                            setForm(f => ({ ...f, category: customCatInput.trim() }))
+                            const key = `custom_${Date.now()}`
+                            addCat({ key, label: customCatInput.trim(), emoji: '🏷️', color: '#6b7280', hidden: false })
+                            setForm(f => ({ ...f, category: key }))
                             setShowCustomCat(false)
                           }
                           if (e.key === 'Escape') setShowCustomCat(false)
@@ -915,7 +926,9 @@ function ProductModal({
                         type="button"
                         onClick={() => {
                           if (customCatInput.trim()) {
-                            setForm(f => ({ ...f, category: customCatInput.trim() }))
+                            const key = `custom_${Date.now()}`
+                            addCat({ key, label: customCatInput.trim(), emoji: '🏷️', color: '#6b7280', hidden: false })
+                            setForm(f => ({ ...f, category: key }))
                           }
                           setShowCustomCat(false)
                         }}
@@ -929,13 +942,9 @@ function ProductModal({
                         onChange={e => setForm(f => ({ ...f, category: e.target.value as ProductCategory }))}
                         className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                       >
-                        {Object.values(ProductCategory).map(c => (
-                          <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
+                        {allCats.map(cat => (
+                          <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
                         ))}
-                        {/* custom category not in enum */}
-                        {!Object.values(ProductCategory).includes(form.category as ProductCategory) && (
-                          <option value={form.category}>{form.category}</option>
-                        )}
                       </select>
                       <button
                         type="button"
@@ -1068,13 +1077,15 @@ export function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true }) | null>(null)
   const [search, setSearch] = useState('')
-  const [filterCat, setFilterCat] = useState<ProductCategory | 'ALL'>('ALL')
+  const [filterCat, setFilterCat] = useState<string>('ALL')
 
   // Category management panel
+  const [showComboModal, setShowComboModal] = useState(false)
   const [showCatPanel, setShowCatPanel] = useState(false)
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
-  const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats } = useCategoryStore()
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
+  const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
 
   function handleAddCategory() {
@@ -1092,6 +1103,10 @@ export function ProductsPage() {
       .catch(() => { if (import.meta.env.DEV) setProducts(MOCK_PRODUCTS) })
       .finally(() => setLoading(false))
   }, [branchId])
+
+  useEffect(() => {
+    if (branchId && useCategoryStore.getState().branchId !== branchId) loadCats(branchId)
+  }, [branchId, loadCats])
 
   async function handleSave(data: Omit<Product, 'id'> & { id?: string }) {
     if (data.id) {
@@ -1150,6 +1165,13 @@ export function ProductsPage() {
           </button>
           <button
             type="button"
+            onClick={() => setShowComboModal(true)}
+            className="px-4 py-2 rounded-xl border border-[var(--color-accent)] text-[var(--color-accent)] text-sm font-bold hover:bg-[var(--color-accent)] hover:text-white transition-colors"
+          >
+            🎁 Crear combo
+          </button>
+          <button
+            type="button"
             onClick={() => setModal('new')}
             className="px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold hover:opacity-90 transition-opacity"
           >
@@ -1174,7 +1196,6 @@ export function ProductsPage() {
 
           <div className="space-y-1.5">
             {allCats.map((cat, idx) => {
-              const isDefault = CATEGORY_DEFAULTS.some(d => d.key === cat.key)
               return (
                 <div key={cat.key} className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
                   <input
@@ -1221,11 +1242,25 @@ export function ProductsPage() {
                     disabled={idx === allCats.length - 1}
                     className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
                   >↓</button>
-                  {!isDefault && (
+                  {confirmDeleteKey === cat.key ? (
+                    <div className="flex items-center gap-1 ml-1">
+                      <button
+                        type="button"
+                        onClick={() => { removeCat(cat.key); setConfirmDeleteKey(null) }}
+                        className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
+                      >¿Eliminar?</button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteKey(null)}
+                        className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
+                      >✕</button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => removeCat(cat.key)}
-                      className="text-[var(--color-danger)] hover:opacity-70 transition-opacity text-xs ml-1"
+                      onClick={() => setConfirmDeleteKey(cat.key)}
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors text-xs ml-1"
+                      title="Eliminar categoría"
                     >✕</button>
                   )}
                 </div>
@@ -1283,12 +1318,12 @@ export function ProductsPage() {
         />
         <select
           value={filterCat}
-          onChange={e => setFilterCat(e.target.value as ProductCategory | 'ALL')}
+          onChange={e => setFilterCat(e.target.value)}
           className="px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
         >
           <option value="ALL">Todas las categorías</option>
-          {Object.values(ProductCategory).map(c => (
-            <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
+          {allCats.map(cat => (
+            <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
           ))}
         </select>
       </div>
@@ -1319,7 +1354,7 @@ export function ProductsPage() {
                     <span className="font-medium text-[var(--color-text-primary)]">{p.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{CATEGORY_LABELS[p.category as import('@shared-types').ProductCategory] ?? p.category}</td>
+                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{resolveCategoryLabel(p.category, allCats)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{formatCurrency(p.basePrice)}</td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">
                   {(p.modifierGroups ?? []).length > 0
@@ -1357,6 +1392,21 @@ export function ProductsPage() {
           product={modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {showComboModal && (
+        <CreateComboModal
+          products={products}
+          branchId={branchId ?? ''}
+          onClose={() => setShowComboModal(false)}
+          onCreated={() => {
+            setShowComboModal(false)
+            if (!branchId) return
+            api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
+              .then(res => setProducts(res.data))
+              .catch(() => {})
+          }}
         />
       )}
     </div>

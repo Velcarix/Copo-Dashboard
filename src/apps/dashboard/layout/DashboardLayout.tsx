@@ -1,7 +1,124 @@
+import { useRef, useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { BranchSelector } from '@/shared/components/BranchSelector'
 import { useAuthStore } from '@/shared/store/authStore'
+import { useBranchStore } from '@/shared/store/branchStore'
+import { api } from '@/shared/lib/api'
+import { EmployeeRole } from '@shared-types'
+
+const ROLE_LABELS: Record<EmployeeRole, string> = {
+  [EmployeeRole.OWNER]:   'Dueño',
+  [EmployeeRole.ADMIN]:   'Admin',
+  [EmployeeRole.CASHIER]: 'Cajero',
+  [EmployeeRole.WAITER]:  'Mesero',
+  [EmployeeRole.KITCHEN]: 'Cocina',
+}
+
+const BRANCH_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
+
+function SwitchBranchDropdown() {
+  const { availableBranches, branchId, updateAuthToken } = useAuthStore()
+  const { setSelected } = useBranchStore()
+  const [open, setOpen] = useState(false)
+  const [switching, setSwitching] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  if (availableBranches.length <= 1) return null
+
+  const current = availableBranches.find(b => b.id === branchId) ?? availableBranches[0]
+  const currentIdx = availableBranches.findIndex(b => b.id === branchId)
+
+  async function handleSwitch(targetId: string, role: EmployeeRole) {
+    if (targetId === branchId) { setOpen(false); return }
+    setSwitching(targetId)
+    try {
+      const res = await api.post<{ data: { accessToken: string } }>(
+        '/api/v1/auth/switch-branch',
+        { targetBranchId: targetId },
+      )
+      updateAuthToken(res.data.accessToken, targetId, role)
+      setSelected(targetId)
+    } finally {
+      setSwitching(null)
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative px-3 pt-2 pb-2 border-b border-[var(--color-border)]">
+      <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 px-1">
+        Sesión activa
+      </p>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={[
+          'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium w-full transition-colors',
+          'border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-border)]',
+          'text-[var(--color-text-primary)]',
+        ].join(' ')}
+      >
+        <span
+          className="w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-white font-bold text-[10px]"
+          style={{ background: BRANCH_COLORS[currentIdx >= 0 ? currentIdx : 0] }}
+        >
+          {current?.name.charAt(0).toUpperCase()}
+        </span>
+        <span className="flex-1 text-left truncate">{current?.name}</span>
+        <svg
+          width="10" height="10" viewBox="0 0 10 10" fill="currentColor"
+          className={`shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path d="M1 3l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden">
+          {availableBranches.map((branch, idx) => (
+            <button
+              key={branch.id}
+              type="button"
+              onClick={() => handleSwitch(branch.id, branch.role)}
+              disabled={switching !== null}
+              className={[
+                'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors text-left',
+                branch.id === branchId
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'hover:bg-[var(--color-bg)] text-[var(--color-text-primary)]',
+              ].join(' ')}
+            >
+              <span
+                className="w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-white font-bold text-[10px]"
+                style={{ background: BRANCH_COLORS[idx % BRANCH_COLORS.length] }}
+              >
+                {branch.name.charAt(0).toUpperCase()}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">{branch.name}</p>
+                <p className={`text-[10px] ${branch.id === branchId ? 'opacity-75' : 'text-[var(--color-text-muted)]'}`}>
+                  {ROLE_LABELS[branch.role] ?? branch.role}
+                </p>
+              </div>
+              {switching === branch.id && (
+                <span className="text-[10px] opacity-75">…</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface NavItem {
   to: string
@@ -87,9 +204,12 @@ export function DashboardLayout() {
           <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Panel de control</p>
         </div>
 
-        {/* Branch selector */}
+        {/* Session branch switcher — only when employee has multiple branches */}
+        <SwitchBranchDropdown />
+
+        {/* Branch selector (data view filter) */}
         <div className="px-3 pt-3 pb-2 border-b border-[var(--color-border)]">
-          <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 px-1">Sucursal</p>
+          <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 px-1">Vista de datos</p>
           <BranchSelector />
         </div>
 
