@@ -1087,11 +1087,13 @@ export function ProductsPage() {
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
   const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
+  const catError = useCategoryStore(s => s.error)
 
-  function handleAddCategory() {
+  async function handleAddCategory() {
     if (!newCat.label.trim()) { setNewCatError('El nombre es obligatorio'); return }
     const key = `custom_${Date.now()}`
-    addCat({ key, label: newCat.label.trim(), emoji: newCat.emoji || '🏷️', color: newCat.color, hidden: false })
+    const ok = await addCat({ key, label: newCat.label.trim(), emoji: newCat.emoji || '🏷️', color: newCat.color, hidden: false })
+    if (!ok) { setNewCatError(useCategoryStore.getState().error ?? 'No se pudo guardar la categoría'); return }
     setNewCat({ label: '', emoji: '⭐', color: '#6366f1' })
     setNewCatError('')
   }
@@ -1193,6 +1195,12 @@ export function ProductsPage() {
               Restablecer
             </button>
           </div>
+
+          {catError && (
+            <p className="text-xs text-[var(--color-danger)] bg-[var(--color-danger)]/10 rounded-lg px-2 py-1.5">
+              {catError} — el cambio no se guardó, intenta de nuevo.
+            </p>
+          )}
 
           <div className="space-y-1.5">
             {allCats.map((cat, idx) => {

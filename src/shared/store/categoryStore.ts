@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { api } from '@/shared/lib/api'
+import { api, ApiError } from '@/shared/lib/api'
 
 export interface CategoryMeta {
   id: string
@@ -33,14 +33,19 @@ function fromApi(c: ApiCategory): CategoryMeta {
   }
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : 'No se pudo guardar — revisa tu conexión'
+}
+
 interface CategoryState {
   categories: CategoryMeta[]
   loaded: boolean
   branchId: string | null
+  error: string | null
   load: (branchId: string) => Promise<void>
   update: (key: string, patch: Partial<Pick<CategoryMeta, 'label' | 'emoji' | 'color' | 'hidden'>>) => Promise<void>
-  add: (cat: { key: string; label: string; emoji: string; color: string; hidden: boolean }) => Promise<void>
-  remove: (key: string) => Promise<void>
+  add: (cat: { key: string; label: string; emoji: string; color: string; hidden: boolean }) => Promise<boolean>
+  remove: (key: string) => Promise<boolean>
   move: (key: string, direction: 'up' | 'down') => Promise<void>
   reset: () => Promise<void>
 }
@@ -51,6 +56,7 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
   categories: [],
   loaded: false,
   branchId: null,
+  error: null,
 
   async load(branchId) {
     set({ branchId })
@@ -76,29 +82,47 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
         ...(patch.color !== undefined ? { color: patch.color } : {}),
         ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
       }).then(res => {
-        set({ categories: get().categories.map(c => c.id === cat.id ? fromApi(res.data) : c) })
+        set({ categories: get().categories.map(c => c.id === cat.id ? fromApi(res.data) : c), error: null })
+      }).catch(async (err) => {
+        // El PUT falló (red caída, backend abajo, etc.) — el cambio optimista quedaba
+        // visible pero nunca se guardaba. Resincroniza con el server para no mentirle al usuario.
+        set({ error: errorMessage(err) })
+        await get().load(branchId)
       })
     }, 400))
   },
 
   async add(cat) {
     const { branchId } = get()
-    if (!branchId) return
-    await api.post<{ data: ApiCategory }>('/api/v1/categories', {
-      branchId,
-      name: cat.label,
-      emoji: cat.emoji,
-      color: cat.color,
-    })
-    await get().load(branchId)
+    if (!branchId) return false
+    try {
+      await api.post<{ data: ApiCategory }>('/api/v1/categories', {
+        branchId,
+        name: cat.label,
+        emoji: cat.emoji,
+        color: cat.color,
+      })
+      await get().load(branchId)
+      set({ error: null })
+      return true
+    } catch (err) {
+      set({ error: errorMessage(err) })
+      return false
+    }
   },
 
   async remove(key) {
     const { branchId, categories } = get()
     const cat = categories.find(c => c.key === key)
-    if (!branchId || !cat) return
-    await api.delete(`/api/v1/categories/${cat.id}?branchId=${branchId}`)
-    set({ categories: categories.filter(c => c.key !== key) })
+    if (!branchId || !cat) return false
+    try {
+      await api.delete(`/api/v1/categories/${cat.id}?branchId=${branchId}`)
+      set({ categories: categories.filter(c => c.key !== key), error: null })
+      return true
+    } catch (err) {
+      set({ error: errorMessage(err) })
+      return false
+    }
   },
 
   async move(key, direction) {
@@ -112,15 +136,23 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     ;[sorted[idx], sorted[target]] = [sorted[target], sorted[idx]]
 
     const orderedIds = sorted.map(c => c.id)
-    const res = await api.put<{ data: ApiCategory[] }>('/api/v1/categories/reorder', { branchId, orderedIds })
-    set({ categories: res.data.map(fromApi) })
+    try {
+      const res = await api.put<{ data: ApiCategory[] }>('/api/v1/categories/reorder', { branchId, orderedIds })
+      set({ categories: res.data.map(fromApi), error: null })
+    } catch (err) {
+      set({ error: errorMessage(err) })
+    }
   },
 
   async reset() {
     const { branchId } = get()
     if (!branchId) return
-    const res = await api.post<{ data: ApiCategory[] }>('/api/v1/categories/reset', { branchId })
-    set({ categories: res.data.map(fromApi) })
+    try {
+      const res = await api.post<{ data: ApiCategory[] }>('/api/v1/categories/reset', { branchId })
+      set({ categories: res.data.map(fromApi), error: null })
+    } catch (err) {
+      set({ error: errorMessage(err) })
+    }
   },
 }))
 
