@@ -34,6 +34,12 @@ export function LoginPage() {
         { skipAuth: true },
       )
       const { user, accessToken, branch, permissions, availableBranches } = res.data
+
+      if (!permissions?.canAccessDashboard) {
+        setError('No tienes permiso para acceder al dashboard')
+        return
+      }
+
       setAuth(user, accessToken, permissions, branch.id, availableBranches ?? [])
 
       const allBranches = (availableBranches ?? [{ id: branch.id, name: branch.name, role: user.role }])

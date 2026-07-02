@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
 import { formatCurrency } from '@/shared/lib/currency'
-import { useCartStore } from '@/shared/store/cartStore'
 import { api } from '@/shared/lib/api'
 import { useAuthStore } from '@/shared/store/authStore'
 
@@ -24,11 +22,6 @@ interface HistoryOrder {
   createdAt: string
   isEdited?: boolean
   employeeName: string
-}
-
-interface OrderHistoryPageProps {
-  hideBackButton?: boolean
-  readOnly?: boolean
 }
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -55,9 +48,7 @@ interface ApiOrder {
   employeeName: string; items: ApiOrderItem[]
 }
 
-export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: OrderHistoryPageProps) {
-  const navigate = useNavigate()
-  const location = useLocation()
+export function OrderHistoryPage() {
   const branchId = useAuthStore(s => s.branchId)
   const [orders, setOrders] = useState<HistoryOrder[]>([])
   const [modal, setModal] = useState<Modal>({ type: 'none' })
@@ -86,41 +77,7 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
       .finally(() => setLoading(false))
   }, [branchId])
 
-  // Apply edit result when returning from POS
-  useEffect(() => {
-    const state = location.state as { savedEdit?: { orderId: string; newTotal: number } } | null
-    if (state?.savedEdit) {
-      const { orderId, newTotal } = state.savedEdit
-      setOrders(prev => prev.map(o =>
-        o.id === orderId ? { ...o, total: newTotal, isEdited: true } : o
-      ))
-      // Clear location state so refresh doesn't re-apply
-      navigate(location.pathname, { replace: true, state: null })
-    }
-  }, [location.state, location.pathname, navigate])
-
   const filtered = orders.filter(o => filterStatus === 'all' || o.status === filterStatus)
-
-  // ── Edit → redirect to POS ────────────────────────────────────────────────
-
-  function openEdit(order: HistoryOrder) {
-    const store = useCartStore.getState()
-    store.clearCart()
-    order.items.forEach(item => {
-      for (let i = 0; i < item.quantity; i++) {
-        useCartStore.getState().addItem(
-          { id: item.productId, name: item.name, basePrice: item.unitPrice },
-          []
-        )
-      }
-    })
-    store.setEditingOrder({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      originalTotal: order.total,
-    })
-    navigate('/pos')
-  }
 
   // ── Refund / cancel ───────────────────────────────────────────────────────
 
@@ -158,17 +115,6 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
     <div className="flex flex-col h-full bg-[var(--color-bg)]">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-[var(--color-surface)] border-b border-[var(--color-border)] shrink-0">
-        {!hideBackButton && (
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-border)]/50 transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 5l-7 7 7 7" />
-            </svg>
-          </button>
-        )}
         <h1 className="font-bold text-[var(--color-text-primary)]">Historial del día</h1>
         <div className="flex-1" />
         <select
@@ -207,8 +153,8 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
                 <>
                   <tr
                     key={order.id}
-                    className={`hover:bg-[var(--color-border)]/30 transition-colors ${readOnly ? 'cursor-pointer' : ''}`}
-                    onClick={readOnly ? () => setExpandedId(expandedId === order.id ? null : order.id) : undefined}
+                    className="hover:bg-[var(--color-border)]/30 transition-colors cursor-pointer"
+                    onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
                   >
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs text-[var(--color-text-primary)] font-semibold">{order.orderNumber}</span>
@@ -240,44 +186,33 @@ export function OrderHistoryPage({ hideBackButton = false, readOnly = false }: O
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {readOnly ? (
+                      {order.status === 'completed' ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setModal({ type: 'refund', order }) }}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/20 transition-colors"
+                          >
+                            Reembolsar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setModal({ type: 'cancel', order }) }}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
                         <div className="flex justify-end">
                           <span className="text-xs text-[var(--color-text-muted)]">
                             {expandedId === order.id ? '▲' : '▼'}
                           </span>
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-end gap-1.5">
-                          {order.status === 'completed' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openEdit(order)}
-                                className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setModal({ type: 'refund', order })}
-                                className="px-2.5 py-1 rounded-lg text-xs font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/20 transition-colors"
-                              >
-                                Reembolsar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setModal({ type: 'cancel', order })}
-                                className="px-2.5 py-1 rounded-lg text-xs font-medium border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
-                              >
-                                Cancelar
-                              </button>
-                            </>
-                          )}
-                        </div>
                       )}
                     </td>
                   </tr>
-                  {readOnly && expandedId === order.id && (
+                  {expandedId === order.id && (
                     <tr key={`${order.id}-detail`} className="bg-[var(--color-bg)]">
                       <td colSpan={5} className="px-6 py-3">
                         <div className="space-y-1.5">

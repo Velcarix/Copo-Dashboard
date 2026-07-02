@@ -1,18 +1,11 @@
-// createHashRouter is used so the same build works in:
-//   - Web / PWA (https://app.copo.mx/#/dashboard)
-//   - Electron  (file://dist/index.html#/pos)
-//   - Capacitor (capacitor://localhost#/dashboard)
+// createHashRouter is used so deep links (https://app.copo.mx/#/dashboard) work
+// correctly on Vercel's static hosting without extra server-side rewrites.
 import { createHashRouter, Navigate } from 'react-router-dom'
 import { EmployeeRole } from '@shared-types'
 import { RouteGuard } from '@/shared/components/RouteGuard'
 import { LicenseGatePage } from '@/apps/auth/LicenseGatePage'
 import { LoginPage } from '@/apps/auth/LoginPage'
 import { BranchSelectorPage } from '@/apps/auth/BranchSelectorPage'
-import { POSLayout } from '@/apps/pos/layout/POSLayout'
-import { POSMain } from '@/apps/pos/pages/POSMain'
-import { ShiftOpen } from '@/apps/pos/pages/ShiftOpen'
-import { ShiftClose } from '@/apps/pos/pages/ShiftClose'
-import { OrderHistoryPage } from '@/apps/pos/pages/OrderHistoryPage'
 
 import { DashboardLayout } from '@/apps/dashboard/layout/DashboardLayout'
 import { DashboardHome } from '@/apps/dashboard/pages/DashboardHome'
@@ -28,8 +21,7 @@ import { ShiftsPage } from '@/apps/dashboard/pages/ShiftsPage'
 import { InvoicesPage } from '@/apps/dashboard/pages/InvoicesPage'
 import { RolesPage } from '@/apps/dashboard/pages/RolesPage'
 import { KitchenDashboardPage } from '@/apps/dashboard/pages/KitchenDashboardPage'
-import { KitchenLayout } from '@/apps/kitchen/KitchenLayout'
-import { KitchenDisplayPage } from '@/apps/kitchen/KitchenDisplayPage'
+import { OrderHistoryPage } from '@/apps/dashboard/pages/OrderHistoryPage'
 
 export const router = createHashRouter([
   { path: '/', element: <Navigate to="/license" replace /> },
@@ -46,7 +38,7 @@ export const router = createHashRouter([
     children: [
       // Dashboard — OWNER and ADMIN only
       {
-        element: <RouteGuard requireRole={[EmployeeRole.OWNER, EmployeeRole.ADMIN]} redirectTo="/pos" />,
+        element: <RouteGuard requireRole={[EmployeeRole.OWNER, EmployeeRole.ADMIN]} redirectTo="/login" />,
         children: [
           {
             path: '/dashboard',
@@ -62,38 +54,12 @@ export const router = createHashRouter([
               { path: 'tables', element: <TablesPage /> },
               { path: 'comandero-config', element: <ComanderoConfigPage /> },
               { path: 'kitchen', element: <KitchenDashboardPage /> },
-              { path: 'orders', element: <OrderHistoryPage hideBackButton /> },
+              { path: 'orders', element: <OrderHistoryPage /> },
               { path: 'shifts', element: <ShiftsPage /> },
               { path: 'invoices', element: <InvoicesPage /> },
               { path: 'roles', element: <RolesPage /> },
             ],
           },
-        ],
-      },
-
-      // POS — all authenticated users
-      {
-        path: '/pos',
-        element: <POSLayout />,
-        children: [
-          { path: 'shift/open', element: <ShiftOpen /> },
-          { path: 'shift/close', element: <ShiftClose /> },
-          { path: 'history', element: <OrderHistoryPage /> },
-          {
-            element: <RouteGuard requireShift />,
-            children: [
-              { index: true, element: <POSMain /> },
-            ],
-          },
-        ],
-      },
-
-      // Kitchen display — kitchen staff mode
-      {
-        path: '/kitchen',
-        element: <KitchenLayout />,
-        children: [
-          { index: true, element: <KitchenDisplayPage /> },
         ],
       },
     ],
