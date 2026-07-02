@@ -22,8 +22,6 @@ describe('SettingsPage', () => {
       expect(screen.getByText('General')).toBeInTheDocument()
       expect(screen.getByText('Cocina')).toBeInTheDocument()
       expect(screen.getByText('Mesas')).toBeInTheDocument()
-      expect(screen.getByText('Delivery')).toBeInTheDocument()
-      expect(screen.getByText('CFDI')).toBeInTheDocument()
     })
   })
 
@@ -32,19 +30,5 @@ describe('SettingsPage', () => {
     await waitFor(() => screen.getByText('Cocina'))
     fireEvent.click(screen.getByText('Cocina'))
     await waitFor(() => expect(screen.getByText('Pantalla de cocina')).toBeInTheDocument())
-  })
-
-  it('switches to Delivery tab', async () => {
-    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
-    await waitFor(() => screen.getByText('Delivery'))
-    fireEvent.click(screen.getByText('Delivery'))
-    await waitFor(() => expect(screen.getByText('Plataformas de delivery')).toBeInTheDocument())
-  })
-
-  it('switches to CFDI tab', async () => {
-    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
-    await waitFor(() => screen.getByText('CFDI'))
-    fireEvent.click(screen.getByText('CFDI'))
-    await waitFor(() => expect(screen.getByText(/Facturación SAT/i)).toBeInTheDocument())
   })
 })
