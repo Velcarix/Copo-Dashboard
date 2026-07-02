@@ -22,8 +22,6 @@ interface BranchState {
   selectedId: string | 'ALL'
   setBranches: (branches: Branch[]) => void
   setSelected: (id: string | 'ALL') => void
-  addBranch: (branch: Omit<Branch, 'id' | 'isActive'>) => void
-  updateBranch: (id: string, updates: Partial<Omit<Branch, 'id'>>) => void
   /** Returns the selected Branch object, or null when "ALL" is active */
   selected: () => Branch | null
 }
@@ -35,19 +33,6 @@ export const useBranchStore = create<BranchState>()(
       selectedId: 'ALL',
       setBranches: (branches) => set({ branches }),
       setSelected: (id) => set({ selectedId: id }),
-      addBranch: (newBranch) => set((state) => ({
-        branches: [
-          ...state.branches,
-          {
-            ...newBranch,
-            id: `branch-${state.branches.length + 1}`,
-            isActive: true
-          }
-        ]
-      })),
-      updateBranch: (id, updates) => set((state) => ({
-        branches: state.branches.map(b => b.id === id ? { ...b, ...updates } : b)
-      })),
       selected: () => {
         const { branches, selectedId } = get()
         if (selectedId === 'ALL') return null

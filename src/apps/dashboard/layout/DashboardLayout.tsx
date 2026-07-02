@@ -160,10 +160,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Icon d={['M18 20V10', 'M12 20V4', 'M6 20v-6']} />,
   },
   {
-    to: '/dashboard/branches', label: 'Sucursales',
-    icon: <Icon d={['M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z', 'M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z']} />,
-  },
-  {
     to: '/dashboard/orders', label: 'Órdenes',
     icon: <Icon d={['M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2', 'M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', 'M9 12h6', 'M9 16h4']} />,
   },

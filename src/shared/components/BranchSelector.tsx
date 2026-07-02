@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { useBranchStore } from '@/shared/store/branchStore'
 
 // One dot color per branch index (cycles if > 5)
@@ -116,17 +115,6 @@ export function BranchSelector() {
               )}
             </button>
           ))}
-
-          <div className="border-t border-[var(--color-border)]" />
-          
-          <Link
-            to="/dashboard/branches"
-            onClick={() => setOpen(false)}
-            className="w-full flex items-center gap-2.5 px-3 py-3 text-xs font-bold text-[var(--color-accent)] hover:bg-[var(--color-bg)] transition-colors"
-          >
-            <span className="w-5 h-5 rounded-full bg-[var(--color-accent)]/10 flex items-center justify-center text-lg">+</span>
-            Administrar sucursales
-          </Link>
         </div>
       )}
     </div>

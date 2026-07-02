@@ -13,7 +13,6 @@ import { InventoryPage } from '@/apps/dashboard/pages/InventoryPage'
 import { ProductsPage } from '@/apps/dashboard/pages/ProductsPage'
 import { EmployeesPage } from '@/apps/dashboard/pages/EmployeesPage'
 import { ReportsPage } from '@/apps/dashboard/pages/ReportsPage'
-import { BranchesPage } from '@/apps/dashboard/pages/BranchesPage'
 import { SettingsPage } from '@/apps/dashboard/pages/SettingsPage'
 import { TablesPage } from '@/apps/dashboard/pages/TablesPage'
 import { ComanderoConfigPage } from '@/apps/dashboard/pages/ComanderoConfigPage'
@@ -49,7 +48,6 @@ export const router = createHashRouter([
               { path: 'products', element: <ProductsPage /> },
               { path: 'employees', element: <EmployeesPage /> },
               { path: 'reports', element: <ReportsPage /> },
-              { path: 'branches', element: <BranchesPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: 'tables', element: <TablesPage /> },
               { path: 'comandero-config', element: <ComanderoConfigPage /> },
