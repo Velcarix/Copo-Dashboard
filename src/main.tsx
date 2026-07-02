@@ -45,7 +45,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 )
 
-// Register Service Worker (production only)
+// El dashboard no es offline-first (a diferencia del POS que se eliminó del repo).
+// Este registro solo existe para desinstalar el Service Worker en navegadores
+// donde haya quedado instalado de una versión anterior — ver public/sw.js.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
