@@ -158,19 +158,22 @@ export function RolesPage() {
 
   useEffect(() => {
     if (!branchId) return
+
+    function defaultMatrix(): PermMatrix {
+      const m = {} as PermMatrix
+      for (const p of MOCK_PROFILES) m[p.role] = p
+      return m
+    }
+
     api
       .get<{ data: ProfilePermissions[] }>(`/api/v1/profiles?branchId=${branchId}`)
       .then(({ data: profiles }) => {
-        const m = {} as PermMatrix
+        const m = defaultMatrix()
         for (const p of profiles) m[p.role] = p
         setMatrix(m)
       })
       .catch(() => {
-        if (import.meta.env.DEV) {
-          const m = {} as PermMatrix
-          for (const p of MOCK_PROFILES) m[p.role] = p
-          setMatrix(m)
-        }
+        setMatrix(defaultMatrix())
       })
   }, [branchId])
 
