@@ -35,8 +35,6 @@ const PERMISSIONS: PermMeta[] = [
   { key: 'canManageEmployees',  label: 'Gestionar empleados',         group: 'Administración' },
   { key: 'canManageProducts',   label: 'Gestionar productos',         group: 'Administración' },
   { key: 'canIssueInvoices',    label: 'Emitir facturas CFDI',        group: 'Administración' },
-  // Terminal compartida
-  { key: 'isShared',            label: 'Terminal compartida (PIN único)', group: 'Terminal' },
 ]
 
 // Al desactivar una de estas llaves, sus permisos dependientes se desactivan también
