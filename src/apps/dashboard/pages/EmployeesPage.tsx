@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
-import { EmployeeRole } from '@shared-types'
+import { EmployeeRole, type ProfilePermissions } from '@shared-types'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
+import { PERMISSIONS, applyCascade, MOCK_PROFILES, type PermKey } from '@/apps/dashboard/lib/permissionMeta'
 
 // DEV mock — in production from auth JWT / settings
 // Only affects whether WAITER role (comandero tablet) is assignable
@@ -16,9 +17,6 @@ interface Employee {
   role: EmployeeRole
   active: boolean
   hasPassword: boolean
-  isShared: boolean
-  canSkipShiftOpen: boolean
-  canSkipShiftClose: boolean
   branches?: EmployeeBranchEntry[]
 }
 
@@ -46,10 +44,10 @@ const ROLE_LABELS: Record<EmployeeRole, string> = {
 const ASSIGNABLE_ROLES = Object.values(EmployeeRole).filter(r => r !== EmployeeRole.OWNER)
 
 const MOCK_EMPLOYEES: Employee[] = [
-  { id: 'e1', name: 'Roberto García',  role: EmployeeRole.OWNER,   active: true,  hasPassword: false, isShared: false, canSkipShiftOpen: true,  canSkipShiftClose: true  },
-  { id: 'e2', name: 'María López',     role: EmployeeRole.CASHIER, active: true,  hasPassword: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
-  { id: 'e3', name: 'Carlos Pérez',    role: EmployeeRole.CASHIER, active: true,  hasPassword: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
-  { id: 'e4', name: 'Terminal Bar',    role: EmployeeRole.CASHIER, active: true,  hasPassword: true,  isShared: true,  canSkipShiftOpen: true,  canSkipShiftClose: false },
+  { id: 'e1', name: 'Roberto García',  role: EmployeeRole.OWNER,   active: true,  hasPassword: false },
+  { id: 'e2', name: 'María López',     role: EmployeeRole.CASHIER, active: true,  hasPassword: true },
+  { id: 'e3', name: 'Carlos Pérez',    role: EmployeeRole.CASHIER, active: true,  hasPassword: true },
+  { id: 'e4', name: 'Ana Torres',      role: EmployeeRole.KITCHEN, active: true,  hasPassword: true },
 ]
 
 interface EmployeeForm {
@@ -59,9 +57,6 @@ interface EmployeeForm {
   role: EmployeeRole
   password: string
   hasPassword: boolean
-  isShared: boolean
-  canSkipShiftOpen: boolean
-  canSkipShiftClose: boolean
   branchAccess: BranchAccessForm[]
 }
 
@@ -82,19 +77,13 @@ const emptyForm = (): EmployeeForm => ({
   role: EmployeeRole.CASHIER,
   password: '',
   hasPassword: false,
-  isShared: false,
-  canSkipShiftOpen: false,
-  canSkipShiftClose: false,
   branchAccess: [],
 })
 
 /** Settings that are "sensitive" and require admin password confirmation */
-function isSensitive(form: EmployeeForm, original: Employee | null): boolean {
+function isSensitive(form: EmployeeForm): boolean {
   if (form.password) return true
   if (form.role === EmployeeRole.ADMIN) return true
-  if (form.isShared && !original?.isShared) return true
-  if (form.canSkipShiftOpen && !original?.canSkipShiftOpen) return true
-  if (form.canSkipShiftClose && !original?.canSkipShiftClose) return true
   return false
 }
 
@@ -102,7 +91,7 @@ function isSensitive(form: EmployeeForm, original: Employee | null): boolean {
 
 interface ToggleRowProps {
   label: string
-  hint: string
+  hint?: string
   checked: boolean
   onChange: (v: boolean) => void
   sensitive?: boolean
@@ -120,7 +109,7 @@ function ToggleRow({ label, hint, checked, onChange, sensitive }: ToggleRowProps
             </span>
           )}
         </div>
-        <p className="text-xs text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{hint}</p>
+        {hint && <p className="text-xs text-[var(--color-text-muted)] mt-0.5 leading-relaxed">{hint}</p>}
       </div>
       {/* Toggle switch */}
       <div
@@ -138,6 +127,31 @@ function ToggleRow({ label, hint, checked, onChange, sensitive }: ToggleRowProps
         ].join(' ')} />
       </div>
     </label>
+  )
+}
+
+/** Compact switch (no label/hint) — used for the per-permission list in CustomPermissionsModal */
+function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={[
+        'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
+        checked ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]',
+        disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-4' : 'translate-x-0',
+        ].join(' ')}
+      />
+    </button>
   )
 }
 
@@ -190,6 +204,181 @@ function PasswordConfirmModal({ onConfirm, onCancel, error }: PasswordModalProps
   )
 }
 
+// ── Custom per-employee permissions modal ───────────────────────────────────────
+
+function blankPermissions(role: EmployeeRole): ProfilePermissions {
+  return {
+    role,
+    isShared: false,
+    canAccessPOS: false, canAccessDashboard: false,
+    canAccessComandero: false, canAccessKitchen: false,
+    canManageTables: false, canAddTables: false,
+    canApplyDiscounts: false, canCancelOrders: false,
+    canViewReports: false, canManageInventory: false,
+    canManageEmployees: false, canManageProducts: false,
+    canIssueInvoices: false, canSkipShiftOpen: false,
+    canSkipShiftClose: false,
+  }
+}
+
+interface CustomPermissionsModalProps {
+  employeeId: string
+  employeeName: string
+  role: EmployeeRole
+  roleLabel: string
+  branchId: string
+  roleDefault: ProfilePermissions | undefined
+  onClose: () => void
+  onSaved: (override: ProfilePermissions | null) => void
+}
+
+function CustomPermissionsModal({
+  employeeId, employeeName, role, roleLabel, branchId, roleDefault, onClose, onSaved,
+}: CustomPermissionsModalProps) {
+  const [loading, setLoading] = useState(true)
+  const [useCustom, setUseCustom] = useState(false)
+  const [perms, setPerms] = useState<ProfilePermissions>(roleDefault ?? blankPermissions(role))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [showPasswordGate, setShowPasswordGate] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+
+  useEffect(() => {
+    api.get<{ data: ProfilePermissions | null }>(`/api/v1/employees/${employeeId}/permissions?branchId=${branchId}`)
+      .then(res => {
+        if (res.data) { setUseCustom(true); setPerms(res.data) }
+        else { setUseCustom(false); setPerms(roleDefault ?? blankPermissions(role)) }
+      })
+      .catch(() => { setUseCustom(false); setPerms(roleDefault ?? blankPermissions(role)) })
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId, branchId])
+
+  async function persist() {
+    setSaving(true)
+    setError('')
+    try {
+      if (useCustom) {
+        await api.put(`/api/v1/employees/${employeeId}/permissions?branchId=${branchId}`, perms)
+        onSaved(perms)
+      } else {
+        await api.delete(`/api/v1/employees/${employeeId}/permissions?branchId=${branchId}`)
+        onSaved(null)
+      }
+      onClose()
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        onSaved(useCustom ? perms : null)
+        onClose()
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Error al guardar permisos')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handlePasswordConfirm(password: string) {
+    api.post('/api/v1/auth/verify-admin-password', { password })
+      .then(() => { setShowPasswordGate(false); persist() })
+      .catch(() => {
+        if (import.meta.env.DEV) { setShowPasswordGate(false); persist() }
+        else setPasswordError('Contraseña incorrecta')
+      })
+  }
+
+  if (showPasswordGate) {
+    return (
+      <PasswordConfirmModal
+        onConfirm={handlePasswordConfirm}
+        onCancel={() => { setShowPasswordGate(false); setPasswordError('') }}
+        error={passwordError}
+      />
+    )
+  }
+
+  const groups = Array.from(new Set(PERMISSIONS.map(p => p.group)))
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md bg-[var(--color-surface)] rounded-2xl p-5 shadow-2xl overflow-y-auto max-h-[90dvh]">
+        <h2 className="font-bold text-[var(--color-text-primary)]">Permisos personalizados</h2>
+        <p className="text-xs text-[var(--color-text-muted)] mt-0.5 mb-4">
+          {employeeName} · Rol base: {roleLabel}
+        </p>
+
+        {loading ? (
+          <p className="text-sm text-[var(--color-text-muted)] py-6 text-center">Cargando…</p>
+        ) : (
+          <>
+            <ToggleRow
+              label="Personalizar permisos para este usuario"
+              hint={useCustom
+                ? 'Estos permisos sobreescriben los del rol solo para este empleado.'
+                : `Hereda todos los permisos del rol ${roleLabel}.`}
+              checked={useCustom}
+              onChange={setUseCustom}
+            />
+
+            {useCustom && (
+              <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-4">
+                {groups.map(group => (
+                  <div key={group}>
+                    <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+                      {group}
+                    </p>
+                    <div className="space-y-2">
+                      {PERMISSIONS.filter(p => p.group === group).map(perm => {
+                        const lockedOff = perm.dependsOn ? !perms[perm.dependsOn] : false
+                        return (
+                          <div key={perm.key} className="flex items-center justify-between gap-3">
+                            <span className={[
+                              'text-sm',
+                              lockedOff ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]',
+                            ].join(' ')}>
+                              {perm.label}
+                            </span>
+                            <Toggle
+                              checked={lockedOff ? false : (perms[perm.key] as boolean)}
+                              disabled={lockedOff}
+                              onChange={v => setPerms(prev => applyCascade(prev, perm.key as PermKey, v))}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {error && <p className="text-xs text-[var(--color-danger)] mt-3">{error}</p>}
+
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-4">
+              🔐 Se pedirá tu contraseña de administrador para confirmar estos cambios.
+            </p>
+
+            <div className="flex gap-2 mt-4">
+              <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPasswordGate(true)}
+                disabled={saving}
+                className="flex-1 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold disabled:opacity-40"
+              >
+                {saving ? '…' : 'Guardar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function EmployeesPage() {
@@ -202,12 +391,16 @@ export function EmployeesPage() {
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
   const [loadingBranchAccess, setLoadingBranchAccess] = useState(false)
-  // Roles cuyo perfil de permisos (por sucursal) tiene acceso a dashboard — el correo es obligatorio para esos
-  const [dashboardRoles, setDashboardRoles] = useState<Set<EmployeeRole>>(new Set())
+  // Perfiles de permisos por rol (de la sucursal) — determina si el correo es obligatorio
+  const [roleProfiles, setRoleProfiles] = useState<Partial<Record<EmployeeRole, ProfilePermissions>>>({})
 
   // Password confirmation modal state
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordError, setPasswordError]         = useState('')
+
+  // Custom per-employee permission override (null = hereda del rol)
+  const [customOverride, setCustomOverride] = useState<ProfilePermissions | null>(null)
+  const [showCustomPermissions, setShowCustomPermissions] = useState(false)
 
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
@@ -224,14 +417,23 @@ export function EmployeesPage() {
 
   useEffect(() => {
     if (!branchId) return
-    api.get<{ data: { role: EmployeeRole; canAccessDashboard: boolean }[] }>(`/api/v1/profiles?branchId=${branchId}`)
-      .then(res => setDashboardRoles(new Set(res.data.filter(p => p.canAccessDashboard).map(p => p.role))))
-      .catch(() => { /* si falla, solo OWNER queda como obligatorio */ })
+    function toMap(profiles: ProfilePermissions[]): Partial<Record<EmployeeRole, ProfilePermissions>> {
+      const map: Partial<Record<EmployeeRole, ProfilePermissions>> = {}
+      for (const p of profiles) map[p.role] = p
+      return map
+    }
+    api.get<{ data: ProfilePermissions[] }>(`/api/v1/profiles?branchId=${branchId}`)
+      .then(res => setRoleProfiles(toMap(res.data)))
+      .catch(() => {
+        // si falla, solo OWNER queda como obligatorio (en DEV, usar defaults de ejemplo)
+        if (import.meta.env.DEV) setRoleProfiles(toMap(MOCK_PROFILES))
+      })
   }, [branchId])
 
   function openNew() {
     setForm(emptyForm())
     setEditEmployee('new')
+    setCustomOverride(null)
     setError('')
   }
 
@@ -243,12 +445,10 @@ export function EmployeesPage() {
       role: emp.role,
       password: '',
       hasPassword: emp.hasPassword,
-      isShared: emp.isShared,
-      canSkipShiftOpen: emp.canSkipShiftOpen,
-      canSkipShiftClose: emp.canSkipShiftClose,
       branchAccess: [],
     })
     setEditEmployee(emp)
+    setCustomOverride(null)
     setError('')
 
     // Fetch current branch access for this employee
@@ -262,12 +462,21 @@ export function EmployeesPage() {
     } finally {
       setLoadingBranchAccess(false)
     }
+
+    // Fetch existing custom permission override, if any
+    try {
+      const res = await api.get<{ data: ProfilePermissions | null }>(`/api/v1/employees/${emp.id}/permissions?branchId=${branchId}`)
+      setCustomOverride(res.data ?? null)
+    } catch {
+      setCustomOverride(null)
+    }
   }
 
   function closeModal() {
     setEditEmployee(null)
     setShowPasswordModal(false)
     setPasswordError('')
+    setShowCustomPermissions(false)
   }
 
   async function syncBranchAccess(employeeId: string, desiredAccess: BranchAccessForm[], originalAccess: BranchAccessForm[]) {
@@ -305,9 +514,6 @@ export function EmployeesPage() {
       role: form.role,
       password: form.password || undefined,
       branchId: branchId ?? '',
-      isShared: form.isShared,
-      canSkipShiftOpen: form.canSkipShiftOpen,
-      canSkipShiftClose: form.canSkipShiftClose,
     }
     try {
       if (editEmployee === 'new') {
@@ -346,9 +552,6 @@ export function EmployeesPage() {
           role: form.role,
           active: true,
           hasPassword: form.password ? true : form.hasPassword,
-          isShared: form.isShared,
-          canSkipShiftOpen: form.canSkipShiftOpen,
-          canSkipShiftClose: form.canSkipShiftClose,
         }
         setEmployees(prev =>
           editEmployee === 'new' ? [...prev, saved] : prev.map(e => e.id === id ? saved : e)
@@ -366,12 +569,13 @@ export function EmployeesPage() {
     if (!form.name.trim()) return
     const original = editEmployee !== 'new' && editEmployee ? editEmployee : null
     const isOwner = original?.role === EmployeeRole.OWNER
-    const emailRequired = isOwner || dashboardRoles.has(form.role)
+    const hasDashboardAccess = customOverride?.canAccessDashboard ?? roleProfiles[form.role]?.canAccessDashboard ?? false
+    const emailRequired = isOwner || hasDashboardAccess
     if (emailRequired && !form.email.trim()) {
       setError('Este rol tiene acceso al dashboard — el correo electrónico es obligatorio')
       return
     }
-    if (isSensitive(form, original)) {
+    if (isSensitive(form)) {
       // Sensitive settings — ask for admin password first
       setShowPasswordModal(true)
     } else {
@@ -402,7 +606,10 @@ export function EmployeesPage() {
   function handlePasswordConfirm(password: string) {
     api.post('/api/v1/auth/verify-admin-password', { password })
       .then(() => { setShowPasswordModal(false); persistSave() })
-      .catch(() => setPasswordError('Contraseña incorrecta'))
+      .catch(() => {
+        if (import.meta.env.DEV) { setShowPasswordModal(false); persistSave() }
+        else setPasswordError('Contraseña incorrecta')
+      })
   }
 
   if (loading) return (
@@ -441,12 +648,7 @@ export function EmployeesPage() {
             {employees.map(emp => (
               <tr key={emp.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
                 <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
-                  <span>{emp.name}</span>
-                  {emp.isShared && (
-                    <span className="ml-2 text-[10px] font-semibold text-[var(--color-text-muted)] bg-[var(--color-border)] px-1.5 py-0.5 rounded-full">
-                      Compartido
-                    </span>
-                  )}
+                  {emp.name}
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{ROLE_LABELS[emp.role]}</td>
                 <td className="px-4 py-3">
@@ -515,7 +717,7 @@ export function EmployeesPage() {
       </div>
 
       {/* Edit / New modal */}
-      {editEmployee !== null && !showPasswordModal && (
+      {editEmployee !== null && !showPasswordModal && !showCustomPermissions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={closeModal} />
           <div className="relative z-10 w-full max-w-sm bg-[var(--color-surface)] rounded-2xl p-5 shadow-xl overflow-y-auto max-h-[90dvh]">
@@ -525,7 +727,8 @@ export function EmployeesPage() {
 
             {(() => {
               const isOwner = editEmployee !== 'new' && editEmployee !== null && (editEmployee as Employee).role === EmployeeRole.OWNER
-              const emailRequired = isOwner || dashboardRoles.has(form.role)
+              const hasDashboardAccess = customOverride?.canAccessDashboard ?? roleProfiles[form.role]?.canAccessDashboard ?? false
+              const emailRequired = isOwner || hasDashboardAccess
               return (
                 <div className="space-y-3">
                   {/* Name */}
@@ -579,21 +782,22 @@ export function EmployeesPage() {
                     )}
                   </div>
 
-                  {/* Correo — obligatorio para roles con acceso a dashboard (OWNER siempre, otros según permisos de la sucursal) */}
-                  <div>
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                      placeholder={emailRequired ? 'Correo electrónico (obligatorio)' : 'Correo electrónico (opcional)'}
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
-                    />
-                    {emailRequired && (
+                  {/* Correo — solo para empleados con acceso al dashboard (obligatorio, se usa para recuperar la contraseña) */}
+                  {emailRequired && (
+                    <div>
+                      <input
+                        type="email"
+                        required
+                        value={form.email}
+                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                        placeholder="Correo electrónico (obligatorio)"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                      />
                       <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
-                        Este rol tiene acceso al dashboard — el correo es obligatorio para poder recuperar la contraseña.
+                        Este usuario tiene acceso al dashboard — el correo es obligatorio para poder recuperar la contraseña.
                       </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )
             })()}
@@ -667,41 +871,29 @@ export function EmployeesPage() {
               </div>
             )}
 
-            {/* Permission toggles — ocultos para OWNER */}
-            {(editEmployee === 'new' || (editEmployee as Employee)?.role !== EmployeeRole.OWNER) && (
-              <div className="mt-4 pt-4 border-t border-[var(--color-border)] space-y-4">
-                <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
-                  Configuración del perfil
-                </p>
-
-                <ToggleRow
-                  label="Perfil compartido"
-                  hint="Una contraseña que comparten varias personas en la misma terminal"
-                  checked={form.isShared}
-                  onChange={v => setForm(f => ({ ...f, isShared: v }))}
-                  sensitive
-                />
-
-                <ToggleRow
-                  label="Puede saltarse apertura de turno"
-                  hint="Entra directo al POS sin declarar fondo inicial"
-                  checked={form.canSkipShiftOpen}
-                  onChange={v => setForm(f => ({ ...f, canSkipShiftOpen: v }))}
-                  sensitive
-                />
-
-                <ToggleRow
-                  label="Puede saltarse cierre de turno"
-                  hint="Sale del POS sin cerrar ni contar efectivo"
-                  checked={form.canSkipShiftClose}
-                  onChange={v => setForm(f => ({ ...f, canSkipShiftClose: v }))}
-                  sensitive
-                />
+            {/* Permisos personalizados — ocultos para OWNER y para empleados nuevos (aún sin guardar) */}
+            {editEmployee !== 'new' && (editEmployee as Employee)?.role !== EmployeeRole.OWNER && (
+              <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomPermissions(true)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-[var(--color-border)] text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg)] transition-colors"
+                >
+                  <span>Manejar permisos personalizados</span>
+                  <span className="flex items-center gap-1.5">
+                    {customOverride && (
+                      <span className="text-[10px] font-semibold text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-1.5 py-0.5 rounded-full">
+                        Personalizado
+                      </span>
+                    )}
+                    <span className="text-[var(--color-text-muted)]">›</span>
+                  </span>
+                </button>
               </div>
             )}
 
             {/* Sensitive settings notice */}
-            {isSensitive(form, editEmployee !== 'new' && editEmployee ? editEmployee : null) && (
+            {isSensitive(form) && (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
                 🔐 Se pedirá tu contraseña de administrador para confirmar los cambios marcados.
               </p>
@@ -733,6 +925,20 @@ export function EmployeesPage() {
           onConfirm={handlePasswordConfirm}
           onCancel={() => { setShowPasswordModal(false); setPasswordError('') }}
           error={passwordError}
+        />
+      )}
+
+      {/* Custom per-employee permissions modal */}
+      {showCustomPermissions && editEmployee !== null && editEmployee !== 'new' && (
+        <CustomPermissionsModal
+          employeeId={(editEmployee as Employee).id}
+          employeeName={(editEmployee as Employee).name}
+          role={form.role}
+          roleLabel={ROLE_LABELS[form.role]}
+          branchId={branchId ?? ''}
+          roleDefault={roleProfiles[form.role]}
+          onClose={() => setShowCustomPermissions(false)}
+          onSaved={override => setCustomOverride(override)}
         />
       )}
 
