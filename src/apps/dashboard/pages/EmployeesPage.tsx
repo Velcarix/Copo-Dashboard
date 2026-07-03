@@ -202,6 +202,8 @@ export function EmployeesPage() {
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
   const [loadingBranchAccess, setLoadingBranchAccess] = useState(false)
+  // Roles cuyo perfil de permisos (por sucursal) tiene acceso a dashboard — el correo es obligatorio para esos
+  const [dashboardRoles, setDashboardRoles] = useState<Set<EmployeeRole>>(new Set())
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false)
@@ -218,6 +220,13 @@ export function EmployeesPage() {
       .then(res => setEmployees(res.data))
       .catch(() => { if (import.meta.env.DEV) setEmployees(MOCK_EMPLOYEES) })
       .finally(() => setLoading(false))
+  }, [branchId])
+
+  useEffect(() => {
+    if (!branchId) return
+    api.get<{ data: { role: EmployeeRole; canAccessDashboard: boolean }[] }>(`/api/v1/profiles?branchId=${branchId}`)
+      .then(res => setDashboardRoles(new Set(res.data.filter(p => p.canAccessDashboard).map(p => p.role))))
+      .catch(() => { /* si falla, solo OWNER queda como obligatorio */ })
   }, [branchId])
 
   function openNew() {
@@ -356,6 +365,12 @@ export function EmployeesPage() {
   function handleSave() {
     if (!form.name.trim()) return
     const original = editEmployee !== 'new' && editEmployee ? editEmployee : null
+    const isOwner = original?.role === EmployeeRole.OWNER
+    const emailRequired = isOwner || dashboardRoles.has(form.role)
+    if (emailRequired && !form.email.trim()) {
+      setError('Este rol tiene acceso al dashboard — el correo electrónico es obligatorio')
+      return
+    }
     if (isSensitive(form, original)) {
       // Sensitive settings — ask for admin PIN first
       setShowPinModal(true)
@@ -510,6 +525,7 @@ export function EmployeesPage() {
 
             {(() => {
               const isOwner = editEmployee !== 'new' && editEmployee !== null && (editEmployee as Employee).role === EmployeeRole.OWNER
+              const emailRequired = isOwner || dashboardRoles.has(form.role)
               return (
                 <div className="space-y-3">
                   {/* Name */}
@@ -563,16 +579,21 @@ export function EmployeesPage() {
                     )}
                   </div>
 
-                  {/* Correo — solo para OWNER */}
-                  {isOwner && (
+                  {/* Correo — obligatorio para roles con acceso a dashboard (OWNER siempre, otros según permisos de la sucursal) */}
+                  <div>
                     <input
                       type="email"
                       value={form.email}
                       onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                      placeholder="Correo electrónico"
+                      placeholder={emailRequired ? 'Correo electrónico (obligatorio)' : 'Correo electrónico (opcional)'}
                       className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                     />
-                  )}
+                    {emailRequired && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                        Este rol tiene acceso al dashboard — el correo es obligatorio para poder recuperar la contraseña.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )
             })()}

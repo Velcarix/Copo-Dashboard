@@ -5,6 +5,8 @@ import { EmployeeRole } from '@shared-types'
 import { RouteGuard } from '@/shared/components/RouteGuard'
 import { LicenseGatePage } from '@/apps/auth/LicenseGatePage'
 import { LoginPage } from '@/apps/auth/LoginPage'
+import { ForgotPasswordPage } from '@/apps/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/apps/auth/ResetPasswordPage'
 import { BranchSelectorPage } from '@/apps/auth/BranchSelectorPage'
 
 import { DashboardLayout } from '@/apps/dashboard/layout/DashboardLayout'
@@ -26,6 +28,8 @@ export const router = createHashRouter([
   { path: '/', element: <Navigate to="/license" replace /> },
   { path: '/license', element: <LicenseGatePage /> },
   { path: '/login', element: <LoginPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     element: <RouteGuard requireAuth />,
     children: [

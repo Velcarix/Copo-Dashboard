@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
 import type { AvailableBranch } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
@@ -120,6 +120,12 @@ export function LoginPage() {
             {loading ? '…' : 'Entrar'}
           </button>
         </form>
+        <Link
+          to="/forgot-password"
+          className="block text-center text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] mt-4"
+        >
+          ¿Olvidaste tu contraseña?
+        </Link>
       </div>
     </div>
   )
