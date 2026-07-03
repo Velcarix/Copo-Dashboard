@@ -15,7 +15,7 @@ interface Employee {
   username?: string
   role: EmployeeRole
   active: boolean
-  hasPin: boolean
+  hasPassword: boolean
   isShared: boolean
   canSkipShiftOpen: boolean
   canSkipShiftClose: boolean
@@ -46,10 +46,10 @@ const ROLE_LABELS: Record<EmployeeRole, string> = {
 const ASSIGNABLE_ROLES = Object.values(EmployeeRole).filter(r => r !== EmployeeRole.OWNER)
 
 const MOCK_EMPLOYEES: Employee[] = [
-  { id: 'e1', name: 'Roberto García',  role: EmployeeRole.OWNER,   active: true,  hasPin: false, isShared: false, canSkipShiftOpen: true,  canSkipShiftClose: true  },
-  { id: 'e2', name: 'María López',     role: EmployeeRole.CASHIER, active: true,  hasPin: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
-  { id: 'e3', name: 'Carlos Pérez',    role: EmployeeRole.CASHIER, active: true,  hasPin: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
-  { id: 'e4', name: 'Terminal Bar',    role: EmployeeRole.CASHIER, active: true,  hasPin: true,  isShared: true,  canSkipShiftOpen: true,  canSkipShiftClose: false },
+  { id: 'e1', name: 'Roberto García',  role: EmployeeRole.OWNER,   active: true,  hasPassword: false, isShared: false, canSkipShiftOpen: true,  canSkipShiftClose: true  },
+  { id: 'e2', name: 'María López',     role: EmployeeRole.CASHIER, active: true,  hasPassword: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
+  { id: 'e3', name: 'Carlos Pérez',    role: EmployeeRole.CASHIER, active: true,  hasPassword: true,  isShared: false, canSkipShiftOpen: false, canSkipShiftClose: false },
+  { id: 'e4', name: 'Terminal Bar',    role: EmployeeRole.CASHIER, active: true,  hasPassword: true,  isShared: true,  canSkipShiftOpen: true,  canSkipShiftClose: false },
 ]
 
 interface EmployeeForm {
@@ -58,7 +58,7 @@ interface EmployeeForm {
   email: string
   role: EmployeeRole
   password: string
-  hasPin: boolean
+  hasPassword: boolean
   isShared: boolean
   canSkipShiftOpen: boolean
   canSkipShiftClose: boolean
@@ -81,7 +81,7 @@ const emptyForm = (): EmployeeForm => ({
   email: '',
   role: EmployeeRole.CASHIER,
   password: '',
-  hasPin: false,
+  hasPassword: false,
   isShared: false,
   canSkipShiftOpen: false,
   canSkipShiftClose: false,
@@ -141,16 +141,16 @@ function ToggleRow({ label, hint, checked, onChange, sensitive }: ToggleRowProps
   )
 }
 
-// ── PIN confirmation modal ────────────────────────────────────────────────────
+// ── Password confirmation modal ─────────────────────────────────────────────────
 
-interface PinModalProps {
-  onConfirm: (pin: string) => void
+interface PasswordModalProps {
+  onConfirm: (password: string) => void
   onCancel: () => void
   error: string
 }
 
-function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
-  const [pin, setPin] = useState('')
+function PasswordConfirmModal({ onConfirm, onCancel, error }: PasswordModalProps) {
+  const [password, setPassword] = useState('')
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -165,8 +165,8 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
         </div>
         <input
           type="password"
-          value={pin}
-          onChange={e => setPin(e.target.value)}
+          value={password}
+          onChange={e => setPassword(e.target.value)}
           placeholder="Contraseña"
           autoFocus
           className="w-full px-3 py-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)]"
@@ -178,8 +178,8 @@ function PinConfirmModal({ onConfirm, onCancel, error }: PinModalProps) {
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(pin)}
-            disabled={!pin.trim()}
+            onClick={() => onConfirm(password)}
+            disabled={!password.trim()}
             className="flex-1 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold disabled:opacity-40"
           >
             Confirmar
@@ -205,9 +205,9 @@ export function EmployeesPage() {
   // Roles cuyo perfil de permisos (por sucursal) tiene acceso a dashboard — el correo es obligatorio para esos
   const [dashboardRoles, setDashboardRoles] = useState<Set<EmployeeRole>>(new Set())
 
-  // PIN modal state
-  const [showPinModal, setShowPinModal] = useState(false)
-  const [pinError, setPinError]         = useState('')
+  // Password confirmation modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [passwordError, setPasswordError]         = useState('')
 
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
@@ -242,7 +242,7 @@ export function EmployeesPage() {
       email: (emp as any).email ?? '',
       role: emp.role,
       password: '',
-      hasPin: emp.hasPin,
+      hasPassword: emp.hasPassword,
       isShared: emp.isShared,
       canSkipShiftOpen: emp.canSkipShiftOpen,
       canSkipShiftClose: emp.canSkipShiftClose,
@@ -266,8 +266,8 @@ export function EmployeesPage() {
 
   function closeModal() {
     setEditEmployee(null)
-    setShowPinModal(false)
-    setPinError('')
+    setShowPasswordModal(false)
+    setPasswordError('')
   }
 
   async function syncBranchAccess(employeeId: string, desiredAccess: BranchAccessForm[], originalAccess: BranchAccessForm[]) {
@@ -324,9 +324,9 @@ export function EmployeesPage() {
         await syncBranchAccess(emp.id, form.branchAccess, originalAccess)
         setEmployees(prev => prev.map(e => {
           if (e.id === emp.id) {
-            const hasPinBefore = e.hasPin || (e as any).has_pin || (e as any).hasPassword
+            const hadPasswordBefore = e.hasPassword || (e as any).has_password
             const updated = { ...e, ...res.data }
-            updated.hasPin = !!(form.password || hasPinBefore || updated.hasPin || (updated as any).has_pin)
+            updated.hasPassword = !!(form.password || hadPasswordBefore || updated.hasPassword || (updated as any).has_password)
             updated.branches = [
               { id: branchId ?? '', name: allBranches.find(b => b.id === branchId)?.name ?? '', role: form.role, isPrimary: true },
               ...form.branchAccess.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })),
@@ -345,7 +345,7 @@ export function EmployeesPage() {
           name: form.name,
           role: form.role,
           active: true,
-          hasPin: form.password ? true : form.hasPin,
+          hasPassword: form.password ? true : form.hasPassword,
           isShared: form.isShared,
           canSkipShiftOpen: form.canSkipShiftOpen,
           canSkipShiftClose: form.canSkipShiftClose,
@@ -372,8 +372,8 @@ export function EmployeesPage() {
       return
     }
     if (isSensitive(form, original)) {
-      // Sensitive settings — ask for admin PIN first
-      setShowPinModal(true)
+      // Sensitive settings — ask for admin password first
+      setShowPasswordModal(true)
     } else {
       persistSave()
     }
@@ -399,10 +399,10 @@ export function EmployeesPage() {
     }
   }
 
-  function handlePinConfirm(password: string) {
+  function handlePasswordConfirm(password: string) {
     api.post('/api/v1/auth/verify-admin-password', { password })
-      .then(() => { setShowPinModal(false); persistSave() })
-      .catch(() => setPinError('Contraseña incorrecta'))
+      .then(() => { setShowPasswordModal(false); persistSave() })
+      .catch(() => setPasswordError('Contraseña incorrecta'))
   }
 
   if (loading) return (
@@ -475,10 +475,10 @@ export function EmployeesPage() {
                 </td>
                 <td className="px-4 py-3">
                   {(() => {
-                    const hasPin = emp.hasPin || (emp as any).has_pin || (emp as any).hasPassword;
+                    const hasPassword = emp.hasPassword || (emp as any).has_password;
                     return (
-                      <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', hasPin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
-                        {hasPin ? 'Configurado' : 'Sin contraseña'}
+                      <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', hasPassword ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
+                        {hasPassword ? 'Configurado' : 'Sin contraseña'}
                       </span>
                     )
                   })()}
@@ -515,7 +515,7 @@ export function EmployeesPage() {
       </div>
 
       {/* Edit / New modal */}
-      {editEmployee !== null && !showPinModal && (
+      {editEmployee !== null && !showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={closeModal} />
           <div className="relative z-10 w-full max-w-sm bg-[var(--color-surface)] rounded-2xl p-5 shadow-xl overflow-y-auto max-h-[90dvh]">
@@ -571,7 +571,7 @@ export function EmployeesPage() {
                       placeholder="Contraseña (vacío = no cambiar)"
                       className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                     />
-                    {form.hasPin && !form.password && (
+                    {form.hasPassword && !form.password && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
                         <span className="text-[10px] font-semibold text-green-600">Guardado</span>
@@ -727,12 +727,12 @@ export function EmployeesPage() {
         </div>
       )}
 
-      {/* PIN confirmation modal */}
-      {showPinModal && (
-        <PinConfirmModal
-          onConfirm={handlePinConfirm}
-          onCancel={() => { setShowPinModal(false); setPinError('') }}
-          error={pinError}
+      {/* Password confirmation modal */}
+      {showPasswordModal && (
+        <PasswordConfirmModal
+          onConfirm={handlePasswordConfirm}
+          onCancel={() => { setShowPasswordModal(false); setPasswordError('') }}
+          error={passwordError}
         />
       )}
 
