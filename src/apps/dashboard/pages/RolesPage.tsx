@@ -11,6 +11,8 @@ interface PermMeta {
   key: PermKey
   label: string
   group: string
+  /** This permission only makes sense when `dependsOn` is enabled — auto-disabled otherwise. */
+  dependsOn?: PermKey
 }
 
 const PERMISSIONS: PermMeta[] = [
@@ -19,14 +21,14 @@ const PERMISSIONS: PermMeta[] = [
   { key: 'canAccessDashboard',  label: 'Acceder al Dashboard',        group: 'Módulos' },
   { key: 'canAccessComandero',  label: 'Acceder al Comandero',        group: 'Módulos' },
   { key: 'canAccessKitchen',    label: 'Acceder a Cocina',            group: 'Módulos' },
-  // Operación en POS
-  { key: 'canApplyDiscounts',   label: 'Aplicar descuentos',          group: 'POS' },
-  { key: 'canCancelOrders',     label: 'Cancelar órdenes',            group: 'POS' },
-  { key: 'canSkipShiftOpen',    label: 'Omitir apertura de turno',    group: 'POS' },
-  { key: 'canSkipShiftClose',   label: 'Omitir cierre de turno',      group: 'POS' },
-  // Mesas
-  { key: 'canManageTables',     label: 'Administrar mesas',           group: 'Mesas' },
-  { key: 'canAddTables',        label: 'Agregar mesas en vivo',       group: 'Mesas' },
+  // Operación en POS — requiere acceso al POS
+  { key: 'canApplyDiscounts',   label: 'Aplicar descuentos',          group: 'POS', dependsOn: 'canAccessPOS' },
+  { key: 'canCancelOrders',     label: 'Cancelar órdenes',            group: 'POS', dependsOn: 'canAccessPOS' },
+  { key: 'canSkipShiftOpen',    label: 'Omitir apertura de turno',    group: 'POS', dependsOn: 'canAccessPOS' },
+  { key: 'canSkipShiftClose',   label: 'Omitir cierre de turno',      group: 'POS', dependsOn: 'canAccessPOS' },
+  // Mesas — requiere acceso al Comandero
+  { key: 'canManageTables',     label: 'Administrar mesas',           group: 'Mesas', dependsOn: 'canAccessComandero' },
+  { key: 'canAddTables',        label: 'Agregar mesas en vivo',       group: 'Mesas', dependsOn: 'canAccessComandero' },
   // Administración
   { key: 'canViewReports',      label: 'Ver reportes',                group: 'Administración' },
   { key: 'canManageInventory',  label: 'Gestionar inventario',        group: 'Administración' },
@@ -36,6 +38,13 @@ const PERMISSIONS: PermMeta[] = [
   // Terminal compartida
   { key: 'isShared',            label: 'Terminal compartida (PIN único)', group: 'Terminal' },
 ]
+
+// Al desactivar una de estas llaves, sus permisos dependientes se desactivan también
+// (ej. sin acceso al POS no tiene sentido poder omitir turnos).
+const CASCADE_DISABLE: Partial<Record<PermKey, PermKey[]>> = {
+  canAccessPOS: ['canApplyDiscounts', 'canCancelOrders', 'canSkipShiftOpen', 'canSkipShiftClose'],
+  canAccessComandero: ['canManageTables', 'canAddTables'],
+}
 
 const EDITABLE_ROLES: EmployeeRole[] = [
   EmployeeRole.CASHIER,
@@ -180,10 +189,13 @@ export function RolesPage() {
   function toggle(role: EmployeeRole, key: PermKey, value: boolean) {
     setMatrix(prev => {
       if (!prev) return prev
-      return {
-        ...prev,
-        [role]: { ...prev[role], [key]: value },
+      const updated: ProfilePermissions = { ...prev[role], [key]: value }
+      if (!value) {
+        for (const dependent of CASCADE_DISABLE[key] ?? []) {
+          updated[dependent] = false
+        }
       }
+      return { ...prev, [role]: updated }
     })
     setDirty(prev => new Set(prev).add(role))
   }
@@ -225,7 +237,7 @@ export function RolesPage() {
           Permisos por rol
         </h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-1">
-          Configura qué puede hacer cada rol. El rol Dueño siempre tiene acceso total.
+          Configura qué puede hacer cada rol.
         </p>
       </div>
 
@@ -251,10 +263,6 @@ export function RolesPage() {
                   {ROLE_LABEL[role]}
                 </th>
               ))}
-              {/* Owner column — always-on, read-only */}
-              <th className="px-4 py-3 font-medium text-[var(--color-text-muted)] text-center min-w-[80px]">
-                {ROLE_LABEL[EmployeeRole.OWNER]}
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -263,7 +271,7 @@ export function RolesPage() {
                 {/* Group header row */}
                 <tr key={`group-${group}`} className="bg-[var(--color-bg)]">
                   <td
-                    colSpan={EDITABLE_ROLES.length + 2}
+                    colSpan={EDITABLE_ROLES.length + 1}
                     className="px-4 py-2 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide"
                   >
                     {group}
@@ -279,23 +287,20 @@ export function RolesPage() {
                       {perm.label}
                     </td>
 
-                    {EDITABLE_ROLES.map(role => (
-                      <td key={role} className="px-4 py-2.5 text-center">
-                        <div className="flex justify-center">
-                          <Toggle
-                            checked={matrix[role][perm.key] as boolean}
-                            onChange={v => toggle(role, perm.key, v)}
-                          />
-                        </div>
-                      </td>
-                    ))}
-
-                    {/* Owner — always true, disabled */}
-                    <td className="px-4 py-2.5 text-center">
-                      <div className="flex justify-center">
-                        <Toggle checked disabled onChange={() => {}} />
-                      </div>
-                    </td>
+                    {EDITABLE_ROLES.map(role => {
+                      const lockedOff = perm.dependsOn ? !matrix[role][perm.dependsOn] : false
+                      return (
+                        <td key={role} className="px-4 py-2.5 text-center">
+                          <div className="flex justify-center">
+                            <Toggle
+                              checked={lockedOff ? false : (matrix[role][perm.key] as boolean)}
+                              disabled={lockedOff}
+                              onChange={v => toggle(role, perm.key, v)}
+                            />
+                          </div>
+                        </td>
+                      )
+                    })}
                   </tr>
                 ))}
               </>
@@ -332,7 +337,6 @@ export function RolesPage() {
                   </button>
                 </td>
               ))}
-              <td />
             </tr>
           </tfoot>
         </table>

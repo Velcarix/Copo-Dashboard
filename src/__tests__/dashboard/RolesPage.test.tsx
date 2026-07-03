@@ -26,7 +26,7 @@ describe('RolesPage', () => {
       expect(screen.getByText('Mesero')).toBeInTheDocument()
       expect(screen.getByText('Cocina')).toBeInTheDocument()
       expect(screen.getByText('Admin')).toBeInTheDocument()
-      expect(screen.getByText('Dueño')).toBeInTheDocument()
+      expect(screen.queryByText('Dueño')).not.toBeInTheDocument()
     })
   })
 
@@ -62,7 +62,7 @@ describe('RolesPage', () => {
 
     // Toggle the first switch in the Cajero column (canAccessPOS — row index 0)
     const switches = screen.getAllByRole('switch')
-    // switches layout: [Cajero, Mesero, Cocina, Admin, Owner] per permission row
+    // switches layout: [Cajero, Mesero, Cocina, Admin] per permission row
     // first switch is Cajero's canAccessPOS
     fireEvent.click(switches[0])
 
