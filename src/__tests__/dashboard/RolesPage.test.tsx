@@ -35,7 +35,7 @@ describe('RolesPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Módulos')).toBeInTheDocument()
       expect(screen.getByText('POS')).toBeInTheDocument()
-      expect(screen.getByText('Mesas')).toBeInTheDocument()
+      expect(screen.getByText('Comandero')).toBeInTheDocument()
       expect(screen.getByText('Administración')).toBeInTheDocument()
     })
   })

@@ -26,9 +26,9 @@ const PERMISSIONS: PermMeta[] = [
   { key: 'canCancelOrders',     label: 'Cancelar órdenes',            group: 'POS', dependsOn: 'canAccessPOS' },
   { key: 'canSkipShiftOpen',    label: 'Omitir apertura de turno',    group: 'POS', dependsOn: 'canAccessPOS' },
   { key: 'canSkipShiftClose',   label: 'Omitir cierre de turno',      group: 'POS', dependsOn: 'canAccessPOS' },
-  // Mesas — requiere acceso al Comandero
-  { key: 'canManageTables',     label: 'Administrar mesas',           group: 'Mesas', dependsOn: 'canAccessComandero' },
-  { key: 'canAddTables',        label: 'Agregar mesas en vivo',       group: 'Mesas', dependsOn: 'canAccessComandero' },
+  // Comandero — requiere acceso al Comandero
+  { key: 'canManageTables',     label: 'Administrar mesas',           group: 'Comandero', dependsOn: 'canAccessComandero' },
+  { key: 'canAddTables',        label: 'Agregar mesas en vivo',       group: 'Comandero', dependsOn: 'canAccessComandero' },
   // Administración
   { key: 'canViewReports',      label: 'Ver reportes',                group: 'Administración' },
   { key: 'canManageInventory',  label: 'Gestionar inventario',        group: 'Administración' },
