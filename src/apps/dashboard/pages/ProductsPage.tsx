@@ -131,6 +131,17 @@ function emptyOption(groupId: string): ModifierOptionConfig {
   return { id: uid(), groupId, name: '', priceDelta: 0, sortOrder: 0 }
 }
 
+// Un producto en $0 es vendible sin advertencia solo si algún grupo requerido
+// obliga a elegir una opción con precio (p. ej. "Tamaño" con Chico/Grande +$).
+function hasRequiredPricedGroup(groups: ModifierGroupConfig[]): boolean {
+  return groups.some(g => {
+    if (!g.required) return false
+    if ('options' in g && g.options) return g.options.some(o => o.priceDelta > 0)
+    if ('pricePerUnit' in g) return (g.pricePerUnit ?? 0) > 0
+    return false
+  })
+}
+
 // ── Inventory picker — muestra todos los insumos, filtra con buscador ─────────
 
 function InventoryPicker({
@@ -577,6 +588,11 @@ function ModifierGroupEditor({
               </>
             )}
           </div>
+          {!group.required && hasOptions && options.some(o => o.priceDelta > 0) && (
+            <p className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 rounded-lg px-2 py-1.5">
+              ⚠ Sin esto, el cajero puede vender este producto en $0.
+            </p>
+          )}
           {/* Selector condicional: solo si hay otros grupos con opciones */}
           {allGroups && allGroups.some(g => g.id !== group.id && 'options' in g && (g as { options?: unknown[] }).options?.length) && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -726,6 +742,7 @@ function ProductModal({
   const [customCatInput, setCustomCatInput] = useState('')
   const [showCustomCat, setShowCustomCat] = useState(false)
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
+  const [showZeroPriceModal, setShowZeroPriceModal] = useState(false)
 
   useEffect(() => {
     if (!branchId) return
@@ -788,13 +805,7 @@ function ProductModal({
     }))
   }
 
-  async function handleSave() {
-    if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
-    if (form.basePrice < 0) { setError('El precio no puede ser negativo'); return }
-    const emptyGroup = form.modifierGroups.find(g => !g.name.trim())
-    if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
-    const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
-    if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
+  async function doSave() {
     setSaving(true)
     setError('')
     try {
@@ -809,6 +820,20 @@ function ProductModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
+    if (form.basePrice < 0) { setError('El precio no puede ser negativo'); return }
+    const emptyGroup = form.modifierGroups.find(g => !g.name.trim())
+    if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
+    const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
+    if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
+    if (form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
+      setShowZeroPriceModal(true)
+      return
+    }
+    await doSave()
   }
 
   const TABS = [
@@ -1056,6 +1081,34 @@ function ProductModal({
           </button>
         </div>
       </div>
+
+      {showZeroPriceModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowZeroPriceModal(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-[var(--color-surface)] rounded-2xl shadow-2xl p-5 space-y-3">
+            <h3 className="font-bold text-[var(--color-text-primary)]">¿Guardar en $0?</h3>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Este producto puede venderse en $0 — no tiene ningún grupo requerido con opciones de precio. ¿Guardar así?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowZeroPriceModal(false)}
+                className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowZeroPriceModal(false); doSave() }}
+                className="flex-1 py-2 rounded-xl bg-[var(--color-danger)] text-white text-sm font-bold hover:opacity-90 transition-opacity"
+              >
+                Guardar así
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 
