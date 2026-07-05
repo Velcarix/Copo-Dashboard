@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { api, ApiError } from '@/shared/lib/api'
+import { PricingMode } from '@shared-types'
 
 export interface CategoryMeta {
   id: string
@@ -9,6 +10,8 @@ export interface CategoryMeta {
   color: string
   sortOrder: number
   hidden: boolean
+  pricingMode: PricingMode
+  variantScheme?: string[]  // solo relevante si pricingMode === VARIANTS
 }
 
 interface ApiCategory {
@@ -19,6 +22,8 @@ interface ApiCategory {
   color: string | null
   sortOrder: number
   hidden: boolean
+  pricingMode?: PricingMode | null
+  variantScheme?: string[] | null
 }
 
 function fromApi(c: ApiCategory): CategoryMeta {
@@ -30,6 +35,8 @@ function fromApi(c: ApiCategory): CategoryMeta {
     color: c.color ?? '#6366f1',
     sortOrder: c.sortOrder,
     hidden: c.hidden,
+    pricingMode: c.pricingMode ?? PricingMode.FIXED,
+    variantScheme: c.variantScheme ?? undefined,
   }
 }
 
@@ -43,8 +50,8 @@ interface CategoryState {
   branchId: string | null
   error: string | null
   load: (branchId: string) => Promise<void>
-  update: (key: string, patch: Partial<Pick<CategoryMeta, 'label' | 'emoji' | 'color' | 'hidden'>>) => Promise<void>
-  add: (cat: { key: string; label: string; emoji: string; color: string; hidden: boolean }) => Promise<boolean>
+  update: (key: string, patch: Partial<Pick<CategoryMeta, 'label' | 'emoji' | 'color' | 'hidden' | 'pricingMode' | 'variantScheme'>>) => Promise<void>
+  add: (cat: { key: string; label: string; emoji: string; color: string; hidden: boolean; pricingMode?: PricingMode; variantScheme?: string[] }) => Promise<boolean>
   remove: (key: string) => Promise<boolean>
   move: (key: string, direction: 'up' | 'down') => Promise<void>
   reset: () => Promise<void>
@@ -81,6 +88,8 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
         ...(patch.emoji !== undefined ? { emoji: patch.emoji } : {}),
         ...(patch.color !== undefined ? { color: patch.color } : {}),
         ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+        ...(patch.pricingMode !== undefined ? { pricingMode: patch.pricingMode } : {}),
+        ...(patch.variantScheme !== undefined ? { variantScheme: patch.variantScheme } : {}),
       }).then(res => {
         set({ categories: get().categories.map(c => c.id === cat.id ? fromApi(res.data) : c), error: null })
       }).catch(async (err) => {
@@ -101,6 +110,8 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
         name: cat.label,
         emoji: cat.emoji,
         color: cat.color,
+        pricingMode: cat.pricingMode ?? PricingMode.FIXED,
+        ...(cat.variantScheme !== undefined ? { variantScheme: cat.variantScheme } : {}),
       })
       await get().load(branchId)
       set({ error: null })

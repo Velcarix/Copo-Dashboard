@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
-import { ProductCategory, ModifierInputType } from '@shared-types'
-import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment } from '@shared-types'
+import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
+import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
 import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
 import { CreateComboModal } from './CreateComboModal'
 
@@ -74,6 +74,83 @@ interface Product {
   imageUrl: string | null
   ingredients: Ingredient[]
   modifierGroups: ModifierGroupConfig[]
+  variants?: ProductVariant[]  // solo si la categoría es VARIANTS
+  maxFlavors?: number          // solo si la categoría es PRESENTATION
+}
+
+const PRICING_MODE_OPTIONS: { value: PricingMode; label: string; example: string }[] = [
+  { value: PricingMode.FIXED, label: 'Precio único', example: 'Cada producto tiene su precio' },
+  { value: PricingMode.VARIANTS, label: 'Por tamaño', example: 'Cada producto tiene precios por tamaño' },
+  { value: PricingMode.PRESENTATION, label: 'Por presentación', example: 'El precio depende de la presentación, no del sabor' },
+]
+
+function pricingModeShortLabel(mode: PricingMode): string {
+  return mode === PricingMode.VARIANTS ? 'Variantes' : mode === PricingMode.PRESENTATION ? 'Presentación' : 'Fijo'
+}
+
+// Sincroniza las variantes de un producto con el esquema de nombres de su categoría:
+// conserva el precio de las que ya existían (por nombre), agrega las nuevas en $0.
+function syncVariantsToScheme(variants: ProductVariant[], scheme: string[]): ProductVariant[] {
+  return scheme.map((name, i) => {
+    const existing = variants.find(v => v.name === name)
+    return existing
+      ? { ...existing, sortOrder: i }
+      : { id: uid(), name, price: 0, sortOrder: i, active: true }
+  })
+}
+
+// ── Editor de esquema de variantes (chips reordenables) para el panel de categorías ──
+
+function VariantSchemeEditor({ scheme, onChange }: { scheme: string[]; onChange: (scheme: string[]) => void }) {
+  const [input, setInput] = useState('')
+
+  function add() {
+    const name = input.trim()
+    if (!name || scheme.includes(name)) return
+    onChange([...scheme, name])
+    setInput('')
+  }
+
+  function remove(name: string) {
+    onChange(scheme.filter(s => s !== name))
+  }
+
+  function move(name: string, direction: 'up' | 'down') {
+    const idx = scheme.indexOf(name)
+    const target = direction === 'up' ? idx - 1 : idx + 1
+    if (idx < 0 || target < 0 || target >= scheme.length) return
+    const next = [...scheme]
+    ;[next[idx], next[target]] = [next[target], next[idx]]
+    onChange(next)
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs text-[var(--color-text-muted)]">Esquema de variantes (ej. Chico, Mediano, Grande)</span>
+      <div className="flex flex-wrap gap-1.5">
+        {scheme.map((name, i) => (
+          <span key={name} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs">
+            {name}
+            <button type="button" onClick={() => move(name, 'up')} disabled={i === 0} className="text-[var(--color-text-muted)] disabled:opacity-30">↑</button>
+            <button type="button" onClick={() => move(name, 'down')} disabled={i === scheme.length - 1} className="text-[var(--color-text-muted)] disabled:opacity-30">↓</button>
+            <button type="button" onClick={() => remove(name)} className="text-[var(--color-danger)]">✕</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder="Nombre de variante"
+          className="flex-1 min-w-[140px] px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+        />
+        <button type="button" onClick={add} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar variante</button>
+      </div>
+      {scheme.length === 0 && <p className="text-xs text-[var(--color-danger)]">Agrega al menos un nombre de variante.</p>}
+    </div>
+  )
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -124,6 +201,8 @@ function emptyProduct(): Omit<Product, 'id'> {
     imageUrl: null,
     ingredients: [],
     modifierGroups: [],
+    variants: [],
+    maxFlavors: 1,
   }
 }
 
@@ -733,6 +812,8 @@ function ProductModal({
       imageUrl: (product as Omit<Product, 'id'>).imageUrl,
       ingredients: (product as Omit<Product, 'id'>).ingredients ?? [],
       modifierGroups: (product as Omit<Product, 'id'>).modifierGroups ?? [],
+      variants: (product as Omit<Product, 'id'>).variants ?? [],
+      maxFlavors: (product as Omit<Product, 'id'>).maxFlavors ?? 1,
     }
   )
   const branchId = useAuthStore(s => s.branchId)
@@ -750,6 +831,23 @@ function ProductModal({
       .then(res => setInventoryItems(res.data))
       .catch(() => { if (import.meta.env.DEV) setInventoryItems(MOCK_INVENTORY) })
   }, [branchId])
+
+  const categoryPricingMode = allCats.find(c => c.key === form.category)?.pricingMode ?? PricingMode.FIXED
+  const variantScheme = allCats.find(c => c.key === form.category)?.variantScheme ?? []
+
+  // Mantiene form.variants alineado al esquema de la categoría (agrega faltantes en $0,
+  // conserva precio de las que ya existían por nombre) cada vez que cambian de categoría
+  // o el esquema se edita desde el panel de categorías.
+  useEffect(() => {
+    if (categoryPricingMode !== PricingMode.VARIANTS) return
+    setForm(f => {
+      const synced = syncVariantsToScheme(f.variants ?? [], variantScheme)
+      const unchanged = synced.length === (f.variants ?? []).length
+        && synced.every((v, i) => v.name === f.variants?.[i]?.name && v.price === f.variants?.[i]?.price)
+      return unchanged ? f : { ...f, variants: synced }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryPricingMode, JSON.stringify(variantScheme)])
 
   function addModifierGroup() {
     const id = uid()
@@ -838,7 +936,7 @@ function ProductModal({
 
   const TABS = [
     { id: 'basic', label: 'General' },
-    { id: 'modifiers', label: `Configuraciones (${form.modifierGroups.length})` },
+    { id: 'modifiers', label: `Extras (${form.modifierGroups.length})` },
     { id: 'ingredients', label: `Ingredientes (${form.ingredients.length})` },
   ] as const
 
@@ -980,24 +1078,76 @@ function ProductModal({
                     </div>
                   )}
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Precio base *</label>
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm text-[var(--color-text-muted)]">$</span>
-                    <input
-                      type="number"
-                      value={form.basePrice / 100}
-                      onChange={e => setForm(f => ({ ...f, basePrice: Math.round(parseFloat(e.target.value || '0') * 100) }))}
-                      onFocus={e => e.target.select()}
-                      placeholder="35.00"
-                      step="0.50"
-                      min="0"
-                      className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
-                    />
+                {categoryPricingMode !== PricingMode.VARIANTS && (
+                  <div>
+                    <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">
+                      {categoryPricingMode === PricingMode.PRESENTATION ? 'Precio de la presentación *' : 'Precio base *'}
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-[var(--color-text-muted)]">$</span>
+                      <input
+                        type="number"
+                        value={form.basePrice / 100}
+                        onChange={e => setForm(f => ({ ...f, basePrice: Math.round(parseFloat(e.target.value || '0') * 100) }))}
+                        onFocus={e => e.target.select()}
+                        placeholder="35.00"
+                        step="0.50"
+                        min="0"
+                        className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                      />
+                    </div>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">{formatCurrency(form.basePrice)}</p>
                   </div>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">{formatCurrency(form.basePrice)}</p>
-                </div>
+                )}
               </div>
+
+              {categoryPricingMode === PricingMode.VARIANTS && (
+                <div>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Precios por variante *</label>
+                  <div className="space-y-1.5">
+                    {(form.variants ?? []).map(v => (
+                      <div key={v.id} className="flex items-center gap-2">
+                        <span className="flex-1 text-sm text-[var(--color-text-secondary)]">{v.name}</span>
+                        <span className="text-sm text-[var(--color-text-muted)]">$</span>
+                        <input
+                          type="number"
+                          value={v.price / 100}
+                          onChange={e => {
+                            const price = Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100)
+                            setForm(f => ({ ...f, variants: (f.variants ?? []).map(x => x.id === v.id ? { ...x, price } : x) }))
+                          }}
+                          onFocus={e => e.target.select()}
+                          placeholder="0.00"
+                          step="0.50"
+                          min="0"
+                          className="w-24 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {(form.variants ?? []).length === 0 && (
+                    <p className="text-xs text-[var(--color-danger)] mt-1">
+                      Esta categoría no tiene esquema de variantes — configúralo en "Categorías".
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {categoryPricingMode === PricingMode.PRESENTATION && (
+                <div>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Sabores incluidos *</label>
+                  <input
+                    type="number"
+                    value={form.maxFlavors ?? 1}
+                    onChange={e => setForm(f => ({ ...f, maxFlavors: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
+                    onFocus={e => e.target.select()}
+                    min="1"
+                    className="w-24 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                  />
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Los sabores se administran en la categoría.</p>
+                </div>
+              )}
+
               <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
                 <input
                   type="checkbox"
@@ -1138,6 +1288,7 @@ export function ProductsPage() {
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
+  const [expandedCatKey, setExpandedCatKey] = useState<string | null>(null)
   const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
   const catError = useCategoryStore(s => s.error)
@@ -1258,7 +1409,8 @@ export function ProductsPage() {
           <div className="space-y-1.5">
             {allCats.map((cat, idx) => {
               return (
-                <div key={cat.key} className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
+                <div key={cat.key} className="space-y-1">
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
                   <input
                     type="text"
                     value={cat.emoji}
@@ -1279,6 +1431,19 @@ export function ProductsPage() {
                     title="Color"
                     className="w-7 h-7 rounded-lg cursor-pointer border border-[var(--color-border)] p-0.5 bg-transparent"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setExpandedCatKey(k => k === cat.key ? null : cat.key)}
+                    className={[
+                      'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors whitespace-nowrap shrink-0',
+                      expandedCatKey === cat.key
+                        ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                        : 'border-[var(--color-border)] text-[var(--color-text-secondary)]',
+                    ].join(' ')}
+                    title="¿Cómo se cobra esta categoría?"
+                  >
+                    {pricingModeShortLabel(cat.pricingMode)}
+                  </button>
                   <button
                     type="button"
                     onClick={() => updateCat(cat.key, { hidden: !cat.hidden })}
@@ -1324,6 +1489,44 @@ export function ProductsPage() {
                       title="Eliminar categoría"
                     >✕</button>
                   )}
+                </div>
+
+                {expandedCatKey === cat.key && (
+                  <div className="ml-2 pl-3 border-l-2 border-[var(--color-border)] py-2 space-y-2">
+                    <div className="flex items-start gap-2 flex-wrap">
+                      <span className="text-xs text-[var(--color-text-muted)] shrink-0 pt-1.5">¿Cómo se cobra?</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {PRICING_MODE_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => updateCat(cat.key, { pricingMode: opt.value })}
+                            title={opt.example}
+                            className={[
+                              'text-xs px-2.5 py-1.5 rounded-xl border transition-colors',
+                              cat.pricingMode === opt.value
+                                ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
+                                : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
+                            ].join(' ')}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {cat.pricingMode === PricingMode.VARIANTS && (
+                      <VariantSchemeEditor
+                        scheme={cat.variantScheme ?? []}
+                        onChange={scheme => updateCat(cat.key, { variantScheme: scheme })}
+                      />
+                    )}
+                    {cat.pricingMode === PricingMode.PRESENTATION && (
+                      <p className="text-xs text-[var(--color-text-muted)]">
+                        Los sabores de esta categoría se administran desde la pestaña "Sabores" (próximamente en esta misma sección).
+                      </p>
+                    )}
+                  </div>
+                )}
                 </div>
               )
             })}
@@ -1416,7 +1619,14 @@ export function ProductsPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">{resolveCategoryLabel(p.category, allCats)}</td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{formatCurrency(p.basePrice)}</td>
+                <td className="px-4 py-3 text-[var(--color-text-secondary)]">
+                  {allCats.find(c => c.key === p.category)?.pricingMode === PricingMode.VARIANTS
+                    ? ((p.variants ?? []).some(v => v.active && v.price > 0)
+                        ? `desde ${formatCurrency(Math.min(...(p.variants ?? []).filter(v => v.active && v.price > 0).map(v => v.price)))}`
+                        : <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Incompleto</span>)
+                    : formatCurrency(p.basePrice)
+                  }
+                </td>
                 <td className="px-4 py-3 text-[var(--color-text-secondary)]">
                   {(p.modifierGroups ?? []).length > 0
                     ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{(p.modifierGroups ?? []).length} grupo{(p.modifierGroups ?? []).length > 1 ? 's' : ''}</span>
