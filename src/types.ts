@@ -77,6 +77,13 @@ export enum ProductCategory {
   BEVERAGE = 'BEVERAGE',
 }
 
+/** Dónde vive el precio de un producto — ver docs/modos-de-cobro/01-SPEC-FUNCIONAL.md */
+export enum PricingMode {
+  FIXED = 'FIXED',               // precio en Product.basePrice (default, comportamiento actual)
+  VARIANTS = 'VARIANTS',         // precio absoluto por ProductVariant (Chico/Mediano/Grande)
+  PRESENTATION = 'PRESENTATION', // Product ES la presentación; sabores vienen de CategoryFlavor
+}
+
 export enum PaymentMethod {
   CASH = 'CASH',
   CARD_TERMINAL = 'CARD_TERMINAL',
@@ -143,12 +150,19 @@ export interface CreateOrderItemDto {
   quantity: number
   unitPrice: number         // centavos
   modifiers?: CreateOrderItemModifierDto[]
+  variantId?: string             // requerido si la categoría es VARIANTS
+  flavors?: CreateOrderItemFlavorDto[]  // requerido si la categoría es PRESENTATION
   note?: string
 }
 
 export interface CreateOrderItemModifierDto {
   optionId: string
   priceDelta: number        // centavos
+}
+
+export interface CreateOrderItemFlavorDto {
+  flavorId: string
+  quantity: number   // "doble mango" = 2
 }
 
 export interface OpenShiftDto {
@@ -193,6 +207,11 @@ export interface DashboardData {
   salesByCategory: Array<{ category: string; total: number }>
   salesByEmployee: Array<{ name: string; total: number; orders: number }>
   salesByShift: Array<{ shift: string; employee: string; openedAt: string; closedAt: string; total: number; orders: number }>
+  // Claves opcionales — solo presentes si hay ventas VARIANTS/PRESENTATION/extras
+  // con precio en el período (docs/modos-de-cobro/03-BACKEND-API.md §5).
+  byVariant?: Array<{ variantName: string; revenue: number; units: number }>
+  topFlavors?: Array<{ name: string; units: number }>
+  extras?: { attachRate: number; top: Array<{ name: string; revenue: number; units: number }> }
 }
 
 export interface TerminalIntentResponse {
@@ -317,6 +336,27 @@ export type ModifierGroupConfig =
   | ModifierGroupConfigWeight
   | ModifierGroupConfigSize
 
+// ─── PRICING MODE TYPES (VARIANTS / PRESENTATION) ─────────────────────────────
+
+/** Variante de un producto en una categoría VARIANTS — precio ABSOLUTO, no delta. */
+export interface ProductVariant {
+  id: string
+  name: string        // viene del `variantScheme` de la categoría; editable por producto
+  price: number        // centavos, absoluto — reemplaza basePrice al cobrar
+  sortOrder: number
+  active: boolean
+}
+
+/** Sabor del catálogo de una categoría PRESENTATION (no es un Product). */
+export interface CategoryFlavor {
+  id: string
+  name: string
+  priceDelta: number  // centavos — premium opcional (default 0)
+  soldOut: boolean    // "agotado hoy"
+  active: boolean     // baja lógica permanente
+  sortOrder: number
+}
+
 // ─── CART TYPES ───────────────────────────────────────────────────────────────
 
 export interface CartItemModifier {
@@ -325,13 +365,23 @@ export interface CartItemModifier {
   priceDelta: number  // centavos
 }
 
+export interface CartItemFlavor {
+  flavorId: string
+  flavorName: string  // snapshot al momento de la venta
+  quantity: number    // "doble mango" = 2
+  priceDelta: number  // snapshot del premium
+}
+
 export interface CartItem {
   localId: string
   productId: string
   productName: string
   quantity: number
-  unitPrice: number  // centavos
+  unitPrice: number  // centavos — precio final del ítem (variante o basePrice)
   modifiers: CartItemModifier[]  // always an array; use [] for products with no modifiers
+  variantId?: string     // solo si el producto es VARIANTS
+  variantName?: string   // snapshot para mostrar "Producto · Grande"
+  flavors?: CartItemFlavor[]  // solo si el producto es PRESENTATION
   note?: string
   guestIndex?: number  // 0 or undefined = unassigned, 1+ = guest N
 }
