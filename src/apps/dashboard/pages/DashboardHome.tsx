@@ -40,6 +40,12 @@ interface DashboardData {
   salesByCategory: { category: string; total: number }[]
   salesByEmployee: { name: string; total: number; orders: number }[]
   salesByShift: { shift: string; employee: string; openedAt: string; closedAt: string; total: number; orders: number }[]
+  // Opcionales — solo presentes si hay ventas VARIANTS/PRESENTATION/extras con precio
+  // en el período (docs/modos-de-cobro/03-BACKEND-API.md §5). Ningún panel se ve
+  // vacío: si el backend no manda la clave, el panel entero no se renderiza.
+  byVariant?: { variantName: string; revenue: number; units: number }[]
+  topFlavors?: { name: string; units: number }[]
+  extras?: { attachRate: number; top: { name: string; revenue: number; units: number }[] }
 }
 
 function chartFmt(v: number) {
@@ -115,6 +121,8 @@ export function DashboardHome() {
       salesByCategory:    data.salesByCategory ?? [],
       salesByEmployee:    data.salesByEmployee ?? [],
       salesByShift:       data.salesByShift ?? [],
+      byVariant:          data.byVariant,
+      topFlavors:         data.topFlavors,
     }, branchLabel)
   }
 
@@ -330,6 +338,65 @@ export function DashboardHome() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* ── Mix por variante / Top sabores (solo si el catálogo usa VARIANTS/PRESENTATION) ── */}
+      {((data?.byVariant?.length ?? 0) > 0 || (data?.topFlavors?.length ?? 0) > 0) && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {(data?.byVariant?.length ?? 0) > 0 && (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
+              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+                Mix por variante
+              </p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart layout="vertical" data={data!.byVariant} margin={{ top: 0, right: 10, bottom: 0, left: 0 }}>
+                  <XAxis type="number" tickFormatter={chartFmt} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
+                  <YAxis type="category" dataKey="variantName" width={90} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                  <Bar dataKey="revenue" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {(data?.topFlavors?.length ?? 0) > 0 && (
+            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
+              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
+                Top sabores (unidades)
+              </p>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart layout="vertical" data={data!.topFlavors} margin={{ top: 0, right: 10, bottom: 0, left: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
+                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
+                  <Tooltip formatter={(v: number) => `${v} unidades`} />
+                  <Bar dataKey="units" fill="#10b981" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Extras (attach rate + top extras con precio) ── */}
+      {data?.extras && data.extras.top.length > 0 && (
+        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Extras</p>
+            <span className="text-xs text-[var(--color-text-secondary)]">
+              Attach rate: <strong className="text-[var(--color-text-primary)]">{Math.round(data.extras.attachRate * 100)}%</strong>
+            </span>
+          </div>
+          <div className="space-y-2">
+            {data.extras.top.map(e => (
+              <div key={e.name} className="flex items-center justify-between text-xs">
+                <span className="text-[var(--color-text-secondary)]">{e.name}</span>
+                <span className="text-[var(--color-text-muted)]">
+                  {e.units} u. · <strong className="text-[var(--color-text-primary)]">{formatCurrency(e.revenue)}</strong>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Sales by payment method ── */}
       <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
