@@ -66,4 +66,17 @@ describe('ProductsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '+ Agregar variante' }))
     expect(await screen.findByText('Grande')).toBeInTheDocument()
   })
+
+  it('shows the flavor catalog manager for a PRESENTATION category', async () => {
+    useCategoryStore.setState({
+      categories: [{ id: 'c1', key: 'helados', label: 'Helados', emoji: '🍦', color: '#6366f1', sortOrder: 0, hidden: false, pricingMode: PricingMode.PRESENTATION }],
+      loaded: true,
+      branchId: 'b1',
+      error: null,
+    })
+    render(<MemoryRouter><ProductsPage /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Categorías' }))
+    await userEvent.click(screen.getByTitle('¿Cómo se cobra esta categoría?'))
+    expect(await screen.findByText('Sabores de esta categoría')).toBeInTheDocument()
+  })
 })

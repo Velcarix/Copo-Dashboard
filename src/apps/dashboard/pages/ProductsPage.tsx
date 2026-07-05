@@ -5,6 +5,7 @@ import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
 import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
+import { useFlavorStore, useSortedFlavors } from '@/shared/store/flavorStore'
 import { CreateComboModal } from './CreateComboModal'
 
 const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
@@ -149,6 +150,121 @@ function VariantSchemeEditor({ scheme, onChange }: { scheme: string[]; onChange:
         <button type="button" onClick={add} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar variante</button>
       </div>
       {scheme.length === 0 && <p className="text-xs text-[var(--color-danger)]">Agrega al menos un nombre de variante.</p>}
+    </div>
+  )
+}
+
+// ── Catálogo de sabores para categorías PRESENTATION ──────────────────────────
+
+function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; zeroPriceProducts: Product[] }) {
+  const flavors = useSortedFlavors()
+  const loaded = useFlavorStore(s => s.loaded)
+  const flavorError = useFlavorStore(s => s.error)
+  const storeCategoryId = useFlavorStore(s => s.categoryId)
+  const { load, add, update, remove, toggleSoldOut } = useFlavorStore()
+  const [input, setInput] = useState('')
+  const [showImport, setShowImport] = useState(false)
+
+  useEffect(() => {
+    if (storeCategoryId !== categoryId) load(categoryId)
+  }, [categoryId, storeCategoryId, load])
+
+  async function handleAdd(name?: string) {
+    const value = (name ?? input).trim()
+    if (!value) return
+    const ok = await add({ name: value })
+    if (ok) setInput('')
+  }
+
+  function move(id: string, direction: 'up' | 'down') {
+    const idx = flavors.findIndex(f => f.id === id)
+    const target = direction === 'up' ? idx - 1 : idx + 1
+    if (idx < 0 || target < 0 || target >= flavors.length) return
+    update(flavors[idx].id, { sortOrder: flavors[target].sortOrder })
+    update(flavors[target].id, { sortOrder: flavors[idx].sortOrder })
+  }
+
+  if (storeCategoryId !== categoryId || !loaded) {
+    return <p className="text-xs text-[var(--color-text-muted)]">Cargando sabores…</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      <span className="text-xs text-[var(--color-text-muted)]">Sabores de esta categoría</span>
+      {flavorError && <p className="text-xs text-[var(--color-danger)]">{flavorError}</p>}
+
+      {flavors.length === 0 && (
+        <div className="text-center py-2 space-y-1.5">
+          <p className="text-xs text-[var(--color-text-muted)]">Agrega tu primer sabor</p>
+          {zeroPriceProducts.length > 0 && !showImport && (
+            <button type="button" onClick={() => setShowImport(true)} className="text-xs text-[var(--color-accent)] hover:underline">
+              Importar de mis productos
+            </button>
+          )}
+          {showImport && (
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {zeroPriceProducts.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { handleAdd(p.name); setShowImport(false) }}
+                  className="text-xs px-2 py-1 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+                >
+                  + {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-1">
+        {flavors.map((f, i) => (
+          <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <input
+              type="text"
+              value={f.name}
+              onChange={e => update(f.id, { name: e.target.value })}
+              className="flex-1 min-w-0 text-xs px-1.5 py-1 rounded border border-transparent bg-transparent focus:outline-none focus:border-[var(--color-border)]"
+            />
+            <span className="text-xs text-[var(--color-text-muted)]">+$</span>
+            <input
+              type="number"
+              value={f.priceDelta / 100}
+              onChange={e => update(f.id, { priceDelta: Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100) })}
+              onFocus={e => e.target.select()}
+              min="0"
+              step="0.50"
+              className="w-16 text-xs px-1.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)]"
+            />
+            <button
+              type="button"
+              onClick={() => toggleSoldOut(f.id)}
+              className={[
+                'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors shrink-0 whitespace-nowrap',
+                f.soldOut ? 'border-[var(--color-danger)] text-[var(--color-danger)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]',
+              ].join(' ')}
+            >
+              {f.soldOut ? 'Agotado hoy' : 'Disponible'}
+            </button>
+            <button type="button" onClick={() => move(f.id, 'up')} disabled={i === 0} className="text-[var(--color-text-muted)] disabled:opacity-30">↑</button>
+            <button type="button" onClick={() => move(f.id, 'down')} disabled={i === flavors.length - 1} className="text-[var(--color-text-muted)] disabled:opacity-30">↓</button>
+            <button type="button" onClick={() => remove(f.id)} className="text-[var(--color-danger)] text-xs px-1">✕</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd() } }}
+          placeholder="Nombre del sabor"
+          className="flex-1 min-w-[140px] px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+        />
+        <button type="button" onClick={() => handleAdd()} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar sabor</button>
+      </div>
     </div>
   )
 }
@@ -1521,9 +1637,10 @@ export function ProductsPage() {
                       />
                     )}
                     {cat.pricingMode === PricingMode.PRESENTATION && (
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        Los sabores de esta categoría se administran desde la pestaña "Sabores" (próximamente en esta misma sección).
-                      </p>
+                      <FlavorManager
+                        categoryId={cat.id}
+                        zeroPriceProducts={products.filter(p => p.category === cat.key && p.basePrice === 0)}
+                      />
                     )}
                   </div>
                 )}
