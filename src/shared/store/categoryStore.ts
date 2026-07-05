@@ -44,6 +44,14 @@ function errorMessage(err: unknown): string {
   return err instanceof ApiError ? err.message : 'No se pudo guardar — revisa tu conexión'
 }
 
+// DEV mock — mismas claves que ProductCategory (ProductsPage.MOCK_PRODUCTS las usa),
+// una por cada pricingMode, para poder ver el feature completo sin backend.
+const MOCK_CATEGORIES: CategoryMeta[] = [
+  { id: 'cat-1', key: 'ICE_CREAM', label: 'Helados', emoji: '🍦', color: '#0ea5e9', sortOrder: 0, hidden: false, pricingMode: PricingMode.PRESENTATION },
+  { id: 'cat-2', key: 'COFFEE', label: 'Cafés', emoji: '☕', color: '#92400e', sortOrder: 1, hidden: false, pricingMode: PricingMode.VARIANTS, variantScheme: ['Chico', 'Mediano', 'Grande'] },
+  { id: 'cat-3', key: 'PASTRY', label: 'Pastelería', emoji: '🥐', color: '#f59e0b', sortOrder: 2, hidden: false, pricingMode: PricingMode.FIXED },
+]
+
 interface CategoryState {
   categories: CategoryMeta[]
   loaded: boolean
@@ -67,8 +75,16 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
 
   async load(branchId) {
     set({ branchId })
-    const res = await api.get<{ data: ApiCategory[] }>(`/api/v1/categories?branchId=${branchId}`)
-    set({ categories: res.data.map(fromApi), loaded: true })
+    try {
+      const res = await api.get<{ data: ApiCategory[] }>(`/api/v1/categories?branchId=${branchId}`)
+      set({ categories: res.data.map(fromApi), loaded: true, error: null })
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        set({ categories: MOCK_CATEGORIES, loaded: true, error: null })
+      } else {
+        set({ loaded: true, error: errorMessage(err) })
+      }
+    }
   },
 
   async update(key, patch) {
