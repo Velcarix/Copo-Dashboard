@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
 import { api, ApiError } from '@/shared/lib/api'
 import { pickLicenseFile } from '@/shared/lib/licensePicker'
+import { CopoLogo } from '@/shared/components/CopoLogo'
 
 const LICENSE_STORAGE_KEY = 'copo_license_key'
 
@@ -138,7 +139,7 @@ export function LicenseGatePage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-display font-bold text-[var(--color-accent)] mb-1 text-center">COPO</h1>
+        <CopoLogo height={52} className="mb-1 mx-auto" />
 
         {pageState === 'inactive' ? (
           <div className="mt-8">

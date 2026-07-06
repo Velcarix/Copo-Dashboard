@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
+import { CopoLogo } from '@/shared/components/CopoLogo'
 import { BranchSelector } from '@/shared/components/BranchSelector'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
@@ -196,7 +197,7 @@ export function DashboardLayout() {
       <aside className="hidden md:flex flex-col w-56 bg-[var(--color-surface)] border-r border-[var(--color-border)]">
         {/* Logo */}
         <div className="px-5 py-4 border-b border-[var(--color-border)]">
-          <span className="font-display font-bold text-xl text-[var(--color-accent)] tracking-widest">COPO</span>
+          <CopoLogo height={36} />
           <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Panel de control</p>
         </div>
 

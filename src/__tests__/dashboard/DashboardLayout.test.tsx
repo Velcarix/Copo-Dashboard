@@ -14,9 +14,9 @@ function Wrapper({ path = '/dashboard' }: { path?: string }) {
 }
 
 describe('DashboardLayout', () => {
-  it('renders COPO logo', () => {
+  it('renders Copo logo', () => {
     render(<Wrapper />)
-    expect(screen.getByText('COPO')).toBeInTheDocument()
+    expect(screen.getByAltText('Copo')).toBeInTheDocument()
   })
 
   it('renders nav links', () => {

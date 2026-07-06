@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
 import type { AvailableBranch } from '@/shared/store/authStore'
+import { CopoLogo } from '@/shared/components/CopoLogo'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
@@ -66,7 +67,7 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-display font-bold text-[var(--color-accent)] mb-1">COPO</h1>
+        <CopoLogo height={52} className="mb-1" />
 
         {(businessName || branchName) && (
           <div className="mb-6 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-start justify-between gap-3">
