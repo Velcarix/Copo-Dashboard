@@ -94,10 +94,12 @@ export const useFlavorStore = create<FlavorState>()((set, get) => ({
           if (updateSeq.get(id) !== seq) return // ya se disparó una edición más nueva — ignorar esta respuesta obsoleta
           set({ flavors: get().flavors.map(f => f.id === id ? fromApi(res.data) : f), error: null })
         })
-        .catch(async err => {
+        .catch(err => {
           if (updateSeq.get(id) !== seq) return
+          // No se resincroniza con el server aquí: recargar flavors pisaba el
+          // valor que el usuario seguía editando (revertía a la versión vieja).
+          // Basta con avisar del error — el usuario decide si reintenta.
           set({ error: errorMessage(err) })
-          await get().load(categoryId)
         })
     }, 400))
   },

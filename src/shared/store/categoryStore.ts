@@ -116,12 +116,14 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       }).then(res => {
         if (updateSeq.get(cat.id) !== seq) return // ya se disparó una edición más nueva — ignorar esta respuesta obsoleta
         set({ categories: get().categories.map(c => c.id === cat.id ? fromApi(res.data) : c), error: null })
-      }).catch(async (err) => {
+      }).catch((err) => {
         if (updateSeq.get(cat.id) !== seq) return
-        // El PUT falló (red caída, backend abajo, etc.) — el cambio optimista quedaba
-        // visible pero nunca se guardaba. Resincroniza con el server para no mentirle al usuario.
+        // El PUT falló (red caída, backend abajo, sin VITE_API_URL en DEV, etc.).
+        // NO se resincroniza con el server aquí: recargar categories pisaba el
+        // cambio que el usuario seguía viendo/editando con el valor viejo (o el
+        // mock en DEV), dando la sensación de que el texto borrado "se regeneraba
+        // solo". Basta con avisar del error — el usuario decide si reintenta.
         set({ error: errorMessage(err) })
-        await get().load(branchId)
       })
     }, 400))
   },

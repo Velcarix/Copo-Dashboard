@@ -54,4 +54,20 @@ describe('categoryStore.update()', () => {
     await Promise.resolve()
     expect(useCategoryStore.getState().categories[0].label).toBe('')
   })
+
+  it('keeps the optimistic edit on screen when the save fails, instead of reverting it (e.g. no backend configured in DEV)', async () => {
+    vi.mocked(api.put).mockRejectedValue(new Error('network down'))
+    vi.mocked(api.get).mockRejectedValue(new Error('network down'))
+
+    useCategoryStore.getState().update('ICE_CREAM', { label: '' })
+    await vi.advanceTimersByTimeAsync(400)
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // The user cleared the name — that must stay visible even though the save failed,
+    // instead of silently snapping back to the old (or mock) label.
+    expect(useCategoryStore.getState().categories[0].label).toBe('')
+    expect(useCategoryStore.getState().error).toBeTruthy()
+  })
 })
