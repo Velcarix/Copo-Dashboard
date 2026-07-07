@@ -15,6 +15,8 @@ interface DashboardExportData {
   salesByCategory: { category: string; total: number }[]
   salesByEmployee: { name: string; total: number; orders: number }[]
   salesByShift: { shift: string; employee: string; openedAt: string; closedAt: string; total: number; orders: number }[]
+  byVariant?: { variantName: string; revenue: number; units: number }[]
+  topFlavors?: { name: string; units: number }[]
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -104,6 +106,28 @@ export function exportDashboardToExcel(data: DashboardExportData, branchLabel: s
   const wsCategorias = XLSX.utils.aoa_to_sheet(categoriasRows)
   wsCategorias['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 12 }]
   XLSX.utils.book_append_sheet(wb, wsCategorias, 'Categorías')
+
+  // ── Hoja opcional: Variantes (solo si hay ventas VARIANTS en el período) ──
+  if (data.byVariant && data.byVariant.length > 0) {
+    const variantesRows = [
+      ['Variante', 'Ingresos ($)', 'Unidades vendidas'],
+      ...data.byVariant.map(r => [r.variantName, pesos(r.revenue), r.units]),
+    ]
+    const wsVariantes = XLSX.utils.aoa_to_sheet(variantesRows)
+    wsVariantes['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 18 }]
+    XLSX.utils.book_append_sheet(wb, wsVariantes, 'Variantes')
+  }
+
+  // ── Hoja opcional: Sabores (solo si hay ventas PRESENTATION en el período) ──
+  if (data.topFlavors && data.topFlavors.length > 0) {
+    const saboresRows = [
+      ['Sabor', 'Unidades vendidas'],
+      ...data.topFlavors.map(r => [r.name, r.units]),
+    ]
+    const wsSabores = XLSX.utils.aoa_to_sheet(saboresRows)
+    wsSabores['!cols'] = [{ wch: 20 }, { wch: 18 }]
+    XLSX.utils.book_append_sheet(wb, wsSabores, 'Sabores')
+  }
 
   // ── Hoja 6: Empleados ─────────────────────────────────────────────────────
   const empleadosRows = [

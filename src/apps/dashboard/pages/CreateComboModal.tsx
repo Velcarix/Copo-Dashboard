@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
-import { ProductCategory } from '@shared-types'
+import { ProductCategory, PricingMode } from '@shared-types'
+import type { ProductVariant } from '@shared-types'
+import { useSortedCategories } from '@/shared/store/categoryStore'
 
 interface Product {
   id: string
@@ -9,6 +11,7 @@ interface Product {
   category: ProductCategory | string
   basePrice: number
   active: boolean
+  variants?: ProductVariant[]
 }
 
 interface ComboComponent {
@@ -33,9 +36,18 @@ export function CreateComboModal({ products, branchId, onClose, onCreated }: Pro
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const allCats = useSortedCategories(true)
+
+  // Los productos de categorías VARIANTS no tienen un precio único que ofrecer al
+  // combo (el precio depende de la variante elegida al vender) — se excluyen hasta
+  // que exista selección de variante por componente (combos v2, doc 04 §5).
   const eligibleProducts = useMemo(
-    () => products.filter(p => p.active && p.category !== ProductCategory.COMBO),
-    [products]
+    () => products.filter(p => {
+      if (!p.active || p.category === ProductCategory.COMBO) return false
+      const pricingMode = allCats.find(c => c.key === p.category)?.pricingMode ?? PricingMode.FIXED
+      return pricingMode !== PricingMode.VARIANTS
+    }),
+    [products, allCats]
   )
 
   const filteredProducts = useMemo(
