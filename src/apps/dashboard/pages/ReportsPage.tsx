@@ -8,7 +8,8 @@ import { useAuthStore } from '@/shared/store/authStore'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SalesDay { day: string; total: number; count: number }
-interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; paymentMethod: string; totalAmount: string }
+interface OrderItemRow { name: string; quantity: number }
+interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; paymentMethod: string; totalAmount: string; items?: OrderItemRow[] }
 
 interface InventoryRow {
   name: string
@@ -45,6 +46,7 @@ const MOCK_INVENTORY: InventoryRow[] = [
 const ORDER_COLUMNS = [
   { key: 'orderNumber',  label: 'Orden'    },
   { key: 'createdAt',    label: 'Fecha'    },
+  { key: 'products',     label: 'Producto' },
   { key: 'employeeName', label: 'Empleado' },
   { key: 'paymentMethod',label: 'Método'   },
   { key: 'totalAmount',  label: 'Total'    },
@@ -70,7 +72,25 @@ function formatInventoryRows(rows: InventoryRow[]): Record<string, string | numb
 }
 
 function formatOrderRows(rows: OrderRow[]): Record<string, string | number>[] {
-  return rows.map(r => ({ ...r, totalAmount: formatCurrency(Number(r.totalAmount)) }))
+  return rows.map(({ items, ...r }) => ({
+    ...r,
+    products: (items ?? []).map(i => i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name).join(', '),
+    totalAmount: formatCurrency(Number(r.totalAmount)),
+  }))
+}
+
+/** Fills days with no sales in the range with zero values so the chart always draws a continuous line */
+function fillMissingDays(days: SalesDay[], from: string, to: string): SalesDay[] {
+  const byDay = new Map(days.map(d => [d.day, d]))
+  const result: SalesDay[] = []
+  const cursor = new Date(`${from}T00:00:00`)
+  const end = new Date(`${to}T00:00:00`)
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10)
+    result.push(byDay.get(key) ?? { day: key, total: 0, count: 0 })
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return result
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -101,7 +121,7 @@ export function ReportsPage() {
         api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?branchId=${branchId}&from=${from}&to=${to}&page=${ordersPage}&limit=20`),
       ])
         .then(([salesRes, ordersRes]) => {
-          setSalesDays(salesRes.data.data)
+          setSalesDays(fillMissingDays(salesRes.data.data, from, to))
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
         })
