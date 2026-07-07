@@ -39,6 +39,10 @@ interface FlavorState {
 }
 
 const updateTimers = new Map<string, ReturnType<typeof setTimeout>>()
+// Cada update() incrementa el seq de su sabor — si la respuesta de un PUT
+// llega después de que ya se disparó una edición más nueva, se descarta (evita
+// que una respuesta tardía y obsoleta sobrescriba el valor más reciente).
+const updateSeq = new Map<string, number>()
 
 export const useFlavorStore = create<FlavorState>()((set, get) => ({
   flavors: [],
@@ -80,13 +84,18 @@ export const useFlavorStore = create<FlavorState>()((set, get) => ({
     // real se debounce para no mandar una request por cada tecla.
     set({ flavors: flavors.map(f => f.id === id ? { ...f, ...patch } : f) })
 
+    const seq = (updateSeq.get(id) ?? 0) + 1
+    updateSeq.set(id, seq)
+
     clearTimeout(updateTimers.get(id))
     updateTimers.set(id, setTimeout(() => {
       api.put<{ data: ApiFlavor }>(`/api/v1/categories/${categoryId}/flavors/${id}`, patch)
         .then(res => {
+          if (updateSeq.get(id) !== seq) return // ya se disparó una edición más nueva — ignorar esta respuesta obsoleta
           set({ flavors: get().flavors.map(f => f.id === id ? fromApi(res.data) : f), error: null })
         })
         .catch(async err => {
+          if (updateSeq.get(id) !== seq) return
           set({ error: errorMessage(err) })
           await get().load(categoryId)
         })

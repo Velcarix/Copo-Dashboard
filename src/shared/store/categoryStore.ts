@@ -66,6 +66,10 @@ interface CategoryState {
 }
 
 const updateTimers = new Map<string, ReturnType<typeof setTimeout>>()
+// Cada update() incrementa el seq de su categoría — si la respuesta de un PUT
+// llega después de que ya se disparó una edición más nueva, se descarta (evita
+// que una respuesta tardía y obsoleta sobrescriba el valor más reciente).
+const updateSeq = new Map<string, number>()
 
 export const useCategoryStore = create<CategoryState>()((set, get) => ({
   categories: [],
@@ -96,6 +100,9 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
     // the actual PUT is debounced below to avoid one request per keystroke.
     set({ categories: get().categories.map(c => c.key === key ? { ...c, ...patch } : c) })
 
+    const seq = (updateSeq.get(cat.id) ?? 0) + 1
+    updateSeq.set(cat.id, seq)
+
     clearTimeout(updateTimers.get(cat.id))
     updateTimers.set(cat.id, setTimeout(() => {
       api.put<{ data: ApiCategory }>(`/api/v1/categories/${cat.id}`, {
@@ -107,8 +114,10 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
         ...(patch.pricingMode !== undefined ? { pricingMode: patch.pricingMode } : {}),
         ...(patch.variantScheme !== undefined ? { variantScheme: patch.variantScheme } : {}),
       }).then(res => {
+        if (updateSeq.get(cat.id) !== seq) return // ya se disparó una edición más nueva — ignorar esta respuesta obsoleta
         set({ categories: get().categories.map(c => c.id === cat.id ? fromApi(res.data) : c), error: null })
       }).catch(async (err) => {
+        if (updateSeq.get(cat.id) !== seq) return
         // El PUT falló (red caída, backend abajo, etc.) — el cambio optimista quedaba
         // visible pero nunca se guardaba. Resincroniza con el server para no mentirle al usuario.
         set({ error: errorMessage(err) })
