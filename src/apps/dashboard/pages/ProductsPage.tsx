@@ -1043,7 +1043,7 @@ function ProductModal({
     if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
     const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
     if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
-    if (form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
+    if (categoryPricingMode === PricingMode.FIXED && form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
       setShowZeroPriceModal(true)
       return
     }

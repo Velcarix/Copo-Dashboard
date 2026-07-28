@@ -415,23 +415,6 @@ export enum KitchenOrderStatus {
   DELIVERED = 'DELIVERED',
 }
 
-export enum DeliveryPlatform {
-  RAPPI      = 'RAPPI',
-  UBER_EATS  = 'UBER_EATS',
-  DIDI_FOOD  = 'DIDI_FOOD',
-  JUSTO      = 'JUSTO',
-}
-
-export enum DeliveryOrderStatus {
-  NEW        = 'NEW',
-  ACCEPTED   = 'ACCEPTED',
-  PREPARING  = 'PREPARING',
-  READY      = 'READY',
-  DELIVERED  = 'DELIVERED',
-  CANCELLED  = 'CANCELLED',
-  REJECTED   = 'REJECTED',
-}
-
 export enum CfdiStatus {
   ACTIVE    = 'ACTIVE',
   CANCELLED = 'CANCELLED',
@@ -468,26 +451,12 @@ export interface KitchenQueueItem {
   orderNumber: string
   tableId: string | null
   tableName: string | null
-  source: OrderSource | DeliveryPlatform
+  source: OrderSource
   status: KitchenOrderStatus
   items: Array<{ name: string; quantity: number; modifiers: string[]; note?: string }>
   createdAt: string
   startedAt: string | null
   readyAt: string | null
-}
-
-export interface DeliveryOrderSummary {
-  id: string
-  platform: DeliveryPlatform
-  externalOrderId: string
-  status: DeliveryOrderStatus
-  autoAccepted: boolean
-  items: Array<{ name: string; quantity: number; price: number; modifiers: string[] }>
-  totalAmount: number
-  customerName: string | null
-  customerPhone: string | null
-  createdAt: string
-  estimatedReadyAt: string | null
 }
 
 export interface ProfilePermissions {
