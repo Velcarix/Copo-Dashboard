@@ -1,0 +1,1395 @@
+import { useEffect, useState } from 'react'
+import { api, ApiError } from '@/shared/lib/api'
+import { formatCurrency } from '@/shared/lib/currency'
+import { useAuthStore } from '@/shared/store/authStore'
+import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
+import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
+import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
+import { useFlavorStore, useSortedFlavors } from '@/shared/store/flavorStore'
+import { CreateComboModal } from './CreateComboModal'
+
+const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
+  [ModifierInputType.SELECT]:  'Selección (elige uno)',
+  [ModifierInputType.SIZE]:    'Tamaño (con precio)',
+  [ModifierInputType.NUMERIC]: 'Cantidad numérica',
+  [ModifierInputType.WEIGHT]:  'Peso / gramos',
+}
+
+// Fallback label map — used when categoryStore hasn't loaded yet or is missing entries.
+const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
+  [ProductCategory.ICE_CREAM]: 'Helados',
+  [ProductCategory.COFFEE]:    'Cafés',
+  [ProductCategory.BEVERAGE]:  'Bebidas',
+  [ProductCategory.PASTRY]:    'Pasteles',
+  [ProductCategory.SNACK]:     'Snacks',
+  [ProductCategory.COMBO]:     'Combos',
+  [ProductCategory.EXTRA]:     'Extras',
+}
+
+function resolveCategoryLabel(key: string, allCats: { key: string; label: string }[]): string {
+  return allCats.find(c => c.key === key)?.label ?? CATEGORY_LABEL_FALLBACK[key] ?? key
+}
+
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface InventoryItem {
+  id: string
+  name: string
+  unit: string          // "grams" | "liters" | "units" | etc.
+  currentStock: number
+}
+
+const MOCK_INVENTORY: InventoryItem[] = [
+  { id: 'i1', name: 'Vainilla',     unit: 'grams',  currentStock: 800  },
+  { id: 'i2', name: 'Chocolate',    unit: 'grams',  currentStock: 3200 },
+  { id: 'i3', name: 'Leche entera', unit: 'liters', currentStock: 3    },
+  { id: 'i4', name: 'Fresa',        unit: 'grams',  currentStock: 5400 },
+  { id: 'i5', name: 'Café molido',  unit: 'grams',  currentStock: 2100 },
+]
+
+// Map inventory unit strings → short display unit
+function inventoryUnitToShort(unit: string): string {
+  const map: Record<string, string> = {
+    grams: 'g', kilograms: 'kg', liters: 'L', milliliters: 'ml',
+    units: 'pza', pieces: 'pza',
+  }
+  return map[unit.toLowerCase()] ?? unit
+}
+
+interface Ingredient {
+  id: string
+  inventoryItemId: string   // always linked to an inventory item
+  name: string              // denormalized for display
+  quantity: string
+  unit: string
+}
+
+interface Product {
+  id: string
+  name: string
+  description: string
+  category: ProductCategory | string  // string allows custom categories
+  basePrice: number
+  active: boolean
+  imageUrl: string | null
+  ingredients: Ingredient[]
+  modifierGroups: ModifierGroupConfig[]
+  variants?: ProductVariant[]  // solo si la categoría es VARIANTS
+  maxFlavors?: number          // solo si la categoría es PRESENTATION
+}
+
+const PRICING_MODE_OPTIONS: { value: PricingMode; label: string; example: string }[] = [
+  { value: PricingMode.FIXED, label: 'Precio único', example: 'Cada producto tiene su precio' },
+  { value: PricingMode.VARIANTS, label: 'Por tamaño', example: 'Cada producto tiene precios por tamaño' },
+  { value: PricingMode.PRESENTATION, label: 'Por presentación', example: 'El precio depende de la presentación, no del sabor' },
+]
+
+function pricingModeShortLabel(mode: PricingMode): string {
+  return mode === PricingMode.VARIANTS ? 'Variantes' : mode === PricingMode.PRESENTATION ? 'Presentación' : 'Fijo'
+}
+
+// Sincroniza las variantes de un producto con el esquema de nombres de su categoría:
+// conserva el precio de las que ya existían (por nombre), agrega las nuevas en $0.
+function syncVariantsToScheme(variants: ProductVariant[], scheme: string[]): ProductVariant[] {
+  return scheme.map((name, i) => {
+    const existing = variants.find(v => v.name === name)
+    return existing
+      ? { ...existing, sortOrder: i }
+      : { id: uid(), name, price: 0, sortOrder: i, active: true }
+  })
+}
+
+// ── Editor de esquema de variantes (chips reordenables) para el panel de categorías ──
+
+function VariantSchemeEditor({ scheme, onChange }: { scheme: string[]; onChange: (scheme: string[]) => void }) {
+  const [input, setInput] = useState('')
+
+  function add() {
+    const name = input.trim()
+    if (!name || scheme.includes(name)) return
+    onChange([...scheme, name])
+    setInput('')
+  }
+
+  function remove(name: string) {
+    onChange(scheme.filter(s => s !== name))
+  }
+
+  function move(name: string, direction: 'up' | 'down') {
+    const idx = scheme.indexOf(name)
+    const target = direction === 'up' ? idx - 1 : idx + 1
+    if (idx < 0 || target < 0 || target >= scheme.length) return
+    const next = [...scheme]
+    ;[next[idx], next[target]] = [next[target], next[idx]]
+    onChange(next)
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs text-[var(--color-text-muted)]">Esquema de variantes (ej. Chico, Mediano, Grande)</span>
+      <div className="flex flex-wrap gap-1.5">
+        {scheme.map((name, i) => (
+          <span key={name} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs">
+            {name}
+            <button type="button" onClick={() => move(name, 'up')} disabled={i === 0} className="text-[var(--color-text-muted)] disabled:opacity-30">↑</button>
+            <button type="button" onClick={() => move(name, 'down')} disabled={i === scheme.length - 1} className="text-[var(--color-text-muted)] disabled:opacity-30">↓</button>
+            <button type="button" onClick={() => remove(name)} className="text-[var(--color-danger)]">✕</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder="Nombre de variante"
+          className="flex-1 min-w-[140px] px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+        />
+        <button type="button" onClick={add} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar variante</button>
+      </div>
+      {scheme.length === 0 && <p className="text-xs text-[var(--color-danger)]">Agrega al menos un nombre de variante.</p>}
+    </div>
+  )
+}
+
+// ── Catálogo de sabores para categorías PRESENTATION ──────────────────────────
+
+function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; zeroPriceProducts: Product[] }) {
+  const flavors = useSortedFlavors()
+  const loaded = useFlavorStore(s => s.loaded)
+  const flavorError = useFlavorStore(s => s.error)
+  const storeCategoryId = useFlavorStore(s => s.categoryId)
+  const { load, add, update, remove, toggleSoldOut } = useFlavorStore()
+  const [input, setInput] = useState('')
+  const [showImport, setShowImport] = useState(false)
+
+  useEffect(() => {
+    if (storeCategoryId !== categoryId) load(categoryId)
+  }, [categoryId, storeCategoryId, load])
+
+  async function handleAdd(name?: string) {
+    const value = (name ?? input).trim()
+    if (!value) return
+    const ok = await add({ name: value })
+    if (ok) setInput('')
+  }
+
+  function move(id: string, direction: 'up' | 'down') {
+    const idx = flavors.findIndex(f => f.id === id)
+    const target = direction === 'up' ? idx - 1 : idx + 1
+    if (idx < 0 || target < 0 || target >= flavors.length) return
+    update(flavors[idx].id, { sortOrder: flavors[target].sortOrder })
+    update(flavors[target].id, { sortOrder: flavors[idx].sortOrder })
+  }
+
+  if (storeCategoryId !== categoryId || !loaded) {
+    return <p className="text-xs text-[var(--color-text-muted)]">Cargando sabores…</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      <span className="text-xs text-[var(--color-text-muted)]">Sabores de esta categoría</span>
+      {flavorError && <p className="text-xs text-[var(--color-danger)]">{flavorError}</p>}
+
+      {flavors.length === 0 && (
+        <div className="text-center py-2 space-y-1.5">
+          <p className="text-xs text-[var(--color-text-muted)]">Agrega tu primer sabor</p>
+          {zeroPriceProducts.length > 0 && !showImport && (
+            <button type="button" onClick={() => setShowImport(true)} className="text-xs text-[var(--color-accent)] hover:underline">
+              Importar de mis productos
+            </button>
+          )}
+          {showImport && (
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {zeroPriceProducts.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { handleAdd(p.name); setShowImport(false) }}
+                  className="text-xs px-2 py-1 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+                >
+                  + {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-1">
+        {flavors.map((f, i) => (
+          <div key={f.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <input
+              type="text"
+              value={f.name}
+              onChange={e => update(f.id, { name: e.target.value })}
+              className="flex-1 min-w-0 text-xs px-1.5 py-1 rounded border border-transparent bg-transparent focus:outline-none focus:border-[var(--color-border)]"
+            />
+            <span className="text-xs text-[var(--color-text-muted)]">+$</span>
+            <input
+              type="number"
+              value={f.priceDelta / 100}
+              onChange={e => update(f.id, { priceDelta: Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100) })}
+              onFocus={e => e.target.select()}
+              min="0"
+              step="0.50"
+              className="w-16 text-xs px-1.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)]"
+            />
+            <button
+              type="button"
+              onClick={() => toggleSoldOut(f.id)}
+              className={[
+                'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors shrink-0 whitespace-nowrap',
+                f.soldOut ? 'border-[var(--color-danger)] text-[var(--color-danger)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]',
+              ].join(' ')}
+            >
+              {f.soldOut ? 'Agotado hoy' : 'Disponible'}
+            </button>
+            <button type="button" onClick={() => move(f.id, 'up')} disabled={i === 0} className="text-[var(--color-text-muted)] disabled:opacity-30">↑</button>
+            <button type="button" onClick={() => move(f.id, 'down')} disabled={i === flavors.length - 1} className="text-[var(--color-text-muted)] disabled:opacity-30">↓</button>
+            <button type="button" onClick={() => remove(f.id)} className="text-[var(--color-danger)] text-xs px-1">✕</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd() } }}
+          placeholder="Nombre del sabor"
+          className="flex-1 min-w-[140px] px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+        />
+        <button type="button" onClick={() => handleAdd()} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar sabor</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function uid() { return crypto.randomUUID() }
+
+// ── Product thumbnail / placeholder ──────────────────────────────────────────
+
+function ProductThumb({ name, category: _category, imageUrl, size = 40, color }: { name: string; category: string; imageUrl: string | null; size?: number; color?: string }) {
+  const resolvedColor = color ?? '#6b7280'
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() ?? '')
+    .join('')
+
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={name}
+        width={size}
+        height={size}
+        className="rounded-xl object-cover"
+        style={{ width: size, height: size, minWidth: size }}
+        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+      />
+    )
+  }
+
+  return (
+    <div
+      className="rounded-xl flex items-center justify-center font-bold text-white select-none"
+      style={{ width: size, height: size, minWidth: size, background: resolvedColor, fontSize: size * 0.38 }}
+    >
+      {initials || '?'}
+    </div>
+  )
+}
+
+function emptyProduct(): Omit<Product, 'id'> {
+  return {
+    name: '',
+    description: '',
+    category: ProductCategory.ICE_CREAM,
+    basePrice: 0,
+    active: true,
+    imageUrl: null,
+    ingredients: [],
+    modifierGroups: [],
+    variants: [],
+    maxFlavors: 1,
+  }
+}
+
+function emptyOption(groupId: string): ModifierOptionConfig {
+  return { id: uid(), groupId, name: '', priceDelta: 0, sortOrder: 0 }
+}
+
+// Un producto en $0 es vendible sin advertencia solo si algún grupo requerido
+// obliga a elegir una opción con precio (p. ej. "Tamaño" con Chico/Grande +$).
+function hasRequiredPricedGroup(groups: ModifierGroupConfig[]): boolean {
+  return groups.some(g => {
+    if (!g.required) return false
+    if ('options' in g && g.options) return g.options.some(o => o.priceDelta > 0)
+    if ('pricePerUnit' in g) return (g.pricePerUnit ?? 0) > 0
+    return false
+  })
+}
+
+// ── Inventory picker — muestra todos los insumos, filtra con buscador ─────────
+
+function InventoryPicker({
+  inventoryItems,
+  excludeIds,
+  onSelect,
+}: {
+  inventoryItems: InventoryItem[]
+  excludeIds: string[]
+  onSelect: (item: InventoryItem) => void
+}) {
+  const [query, setQuery] = useState('')
+
+  const available = inventoryItems.filter(i => !excludeIds.includes(i.id))
+  const filtered = query.trim()
+    ? available.filter(i => i.name.toLowerCase().includes(query.toLowerCase()))
+    : available
+
+  if (available.length === 0) return null
+
+  return (
+    <div className="space-y-2">
+      {/* Buscador — solo si hay más de 5 insumos */}
+      {available.length > 5 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[var(--color-text-muted)] shrink-0"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Buscar insumo…"
+            className="flex-1 text-sm bg-transparent outline-none placeholder:text-[var(--color-text-muted)]"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-base leading-none">×</button>
+          )}
+        </div>
+      )}
+
+      {/* Lista de insumos disponibles */}
+      <div className="flex flex-wrap gap-2">
+        {filtered.map(item => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-dashed border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/5 transition-colors"
+          >
+            <span>+</span>
+            <span>{item.name}</span>
+            <span className="text-xs text-[var(--color-text-muted)]">{item.currentStock} {inventoryUnitToShort(item.unit)}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && query && (
+          <p className="text-xs text-[var(--color-text-muted)] italic px-1">Sin resultados para "{query}"</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Ingredient editor ─────────────────────────────────────────────────────────
+
+function IngredientsEditor({
+  ingredients,
+  inventoryItems,
+  onChange,
+}: {
+  ingredients: Ingredient[]
+  inventoryItems: InventoryItem[]
+  onChange: (ing: Ingredient[]) => void
+}) {
+  function add(item: InventoryItem) {
+    const unit = inventoryUnitToShort(item.unit)
+    onChange([...ingredients, { id: uid(), inventoryItemId: item.id, name: item.name, quantity: '', unit }])
+  }
+  function remove(id: string) { onChange(ingredients.filter(i => i.id !== id)) }
+  function updateQty(id: string, quantity: string) {
+    onChange(ingredients.map(i => i.id === id ? { ...i, quantity } : i))
+  }
+
+  const usedIds = ingredients.map(i => i.inventoryItemId)
+
+  return (
+    <div className="space-y-2">
+      {/* Configured ingredients */}
+      {ingredients.map(ing => (
+        <div key={ing.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
+          <span className="flex-1 text-sm font-medium text-[var(--color-text-primary)] truncate">{ing.name}</span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <input
+              type="number"
+              value={ing.quantity}
+              onChange={e => updateQty(ing.id, e.target.value)}
+              placeholder="Cant."
+              min="0"
+              step="any"
+              autoFocus={!ing.quantity}
+              className="w-20 px-2 py-1 text-sm text-right rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus:outline-none focus:border-[var(--color-accent)]"
+            />
+            <span className="text-xs text-[var(--color-text-muted)] w-6">{ing.unit}</span>
+          </div>
+          <button type="button" onClick={() => remove(ing.id)} className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] text-base leading-none px-0.5 transition-colors">×</button>
+        </div>
+      ))}
+
+      {/* Add from inventory */}
+      {inventoryItems.length === 0 ? (
+        <p className="text-xs text-[var(--color-text-muted)] italic px-1">
+          No hay insumos en el inventario. Agrégalos primero en la sección Inventario.
+        </p>
+      ) : usedIds.length === inventoryItems.length ? (
+        <p className="text-xs text-[var(--color-text-muted)] italic px-1">Todos los insumos del inventario ya están agregados.</p>
+      ) : (
+        <InventoryPicker
+          inventoryItems={inventoryItems}
+          excludeIds={usedIds}
+          onSelect={add}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Option ingredient config ──────────────────────────────────────────────────
+
+function OptionIngredientConfig({
+  option,
+  inventoryItems,
+  onChange,
+}: {
+  option: ModifierOptionConfig
+  inventoryItems: InventoryItem[]
+  onChange: (o: ModifierOptionConfig) => void
+}) {
+  const mode = option.ingredientMode ?? 'none'
+
+  function setMode(m: 'none' | 'multiply' | 'custom') {
+    const next: ModifierOptionConfig = { ...option, ingredientMode: m }
+    if (m === 'multiply' && !next.ingredientMultiplier) next.ingredientMultiplier = 1
+    if (m === 'custom' && !next.ingredientAdjustments) next.ingredientAdjustments = []
+    onChange(next)
+  }
+
+  function addAdj(item: InventoryItem) {
+    const unit = inventoryUnitToShort(item.unit)
+    const adj: IngredientAdjustment = { id: uid(), inventoryItemId: item.id, name: item.name, quantity: 1, unit }
+    onChange({ ...option, ingredientAdjustments: [...(option.ingredientAdjustments ?? []), adj] })
+  }
+
+  function updateAdj(id: string, patch: Partial<IngredientAdjustment>) {
+    onChange({
+      ...option,
+      ingredientAdjustments: (option.ingredientAdjustments ?? []).map(a => a.id === id ? { ...a, ...patch } : a),
+    })
+  }
+
+  function removeAdj(id: string) {
+    onChange({ ...option, ingredientAdjustments: (option.ingredientAdjustments ?? []).filter(a => a.id !== id) })
+  }
+
+  const usedIds = (option.ingredientAdjustments ?? []).map(a => a.inventoryItemId)
+
+  const MODES = [
+    { id: 'none',     label: 'No descuenta nada' },
+    { id: 'multiply', label: 'Usa más de lo mismo' },
+    { id: 'custom',   label: 'Usa otros insumos' },
+  ] as const
+
+  return (
+    <div className="mt-2 ml-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2.5">
+      <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">¿Qué descuenta del inventario esta opción?</p>
+
+      <div className="flex flex-wrap gap-2">
+        {MODES.map(m => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => setMode(m.id)}
+            className={[
+              'px-2.5 py-1 text-xs rounded-full border transition-colors',
+              mode === m.id
+                ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white font-semibold'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
+            ].join(' ')}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* multiply */}
+      {mode === 'multiply' && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--color-text-muted)]">Veces los ingredientes del producto:</span>
+          <input
+            type="number"
+            value={option.ingredientMultiplier ?? 1}
+            onChange={e => onChange({ ...option, ingredientMultiplier: parseFloat(e.target.value) || 1 })}
+            min="0.1"
+            step="0.5"
+            className="w-20 px-2 py-1 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+          />
+          <span className="text-xs text-[var(--color-text-muted)]">×</span>
+        </div>
+      )}
+
+      {/* custom: pick from inventory */}
+      {mode === 'custom' && (
+        <div className="space-y-2">
+          {(option.ingredientAdjustments ?? []).map(adj => (
+            <div key={adj.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
+              <span className="flex-1 text-sm font-medium text-[var(--color-text-primary)] truncate">{adj.name}</span>
+              <input
+                type="number"
+                value={adj.quantity}
+                onChange={e => updateAdj(adj.id, { quantity: parseFloat(e.target.value) || 0 })}
+                min="0"
+                step="any"
+                className="w-20 px-2 py-1 text-sm text-right rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus:outline-none focus:border-[var(--color-accent)]"
+              />
+              <span className="text-xs text-[var(--color-text-muted)] w-6">{adj.unit}</span>
+              <button type="button" onClick={() => removeAdj(adj.id)} className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] text-base leading-none px-0.5 transition-colors">×</button>
+            </div>
+          ))}
+
+          {inventoryItems.length === 0 ? (
+            <p className="text-xs text-[var(--color-text-muted)] italic">No hay insumos en el inventario.</p>
+          ) : usedIds.length < inventoryItems.length ? (
+            <InventoryPicker
+              inventoryItems={inventoryItems}
+              excludeIds={usedIds}
+              onSelect={addAdj}
+            />
+          ) : null}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Option row inside a modifier group ────────────────────────────────────────
+
+function OptionRow({
+  option,
+  onChange,
+  onRemove,
+  inventoryItems,
+}: {
+  option: ModifierOptionConfig
+  onChange: (o: ModifierOptionConfig) => void
+  onRemove: () => void
+  inventoryItems?: InventoryItem[]
+}) {
+  const [showIngConfig, setShowIngConfig] = useState(false)
+  const hasIngMode = option.ingredientMode && option.ingredientMode !== 'none'
+
+  return (
+    <div className="pl-4 space-y-1">
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          value={option.name}
+          onChange={e => onChange({ ...option, name: e.target.value })}
+          placeholder="Nombre (ej. Grande)"
+          className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+        />
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-[var(--color-text-muted)]">+$</span>
+          <input
+            type="number"
+            value={option.priceDelta / 100}
+            onChange={e => onChange({ ...option, priceDelta: Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100) })}
+            placeholder="0.00"
+            min="0"
+            step="0.50"
+            className="w-20 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+          />
+        </div>
+        <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)] whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={option.isDefault ?? false}
+            onChange={e => onChange({ ...option, isDefault: e.target.checked })}
+          />
+          Default
+        </label>
+        {/* Inventory toggle button */}
+        {inventoryItems !== undefined && (
+          <button
+            type="button"
+            title="¿Qué descuenta del inventario esta opción?"
+            onClick={() => setShowIngConfig(v => !v)}
+            className={[
+              'px-2 py-1.5 text-xs rounded-lg border transition-colors whitespace-nowrap',
+              hasIngMode
+                ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                : showIngConfig
+                  ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                  : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
+            ].join(' ')}
+          >
+            {hasIngMode ? 'Inventario ✓' : 'Inventario'}
+          </button>
+        )}
+        <button type="button" onClick={onRemove} className="text-[var(--color-danger)] text-sm px-1">✕</button>
+      </div>
+
+      {showIngConfig && inventoryItems !== undefined && (
+        <OptionIngredientConfig
+          option={option}
+          inventoryItems={inventoryItems}
+          onChange={onChange}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Modifier group editor ─────────────────────────────────────────────────────
+
+function ModifierGroupEditor({
+  group,
+  onChange,
+  onRemove,
+  onDuplicate,
+  inventoryItems,
+  allGroups,
+}: {
+  group: ModifierGroupConfig
+  onChange: (g: ModifierGroupConfig) => void
+  onRemove: () => void
+  onDuplicate: () => void
+  inventoryItems?: InventoryItem[]
+  allGroups?: ModifierGroupConfig[]
+}) {
+  function addOption() {
+    if (group.inputType === ModifierInputType.SELECT || group.inputType === ModifierInputType.SIZE) {
+      const updated = {
+        ...group,
+        options: [...(group.options ?? []), emptyOption(group.id)],
+      } as ModifierGroupConfig
+      onChange(updated)
+    }
+  }
+
+  function updateOption(optId: string, opt: ModifierOptionConfig) {
+    if (group.inputType !== ModifierInputType.SELECT && group.inputType !== ModifierInputType.SIZE) return
+    onChange({
+      ...group,
+      options: group.options.map(o => o.id === optId ? opt : o),
+    } as ModifierGroupConfig)
+  }
+
+  function removeOption(optId: string) {
+    if (group.inputType !== ModifierInputType.SELECT && group.inputType !== ModifierInputType.SIZE) return
+    onChange({
+      ...group,
+      options: group.options.filter(o => o.id !== optId),
+    } as ModifierGroupConfig)
+  }
+
+  const hasOptions = group.inputType === ModifierInputType.SELECT || group.inputType === ModifierInputType.SIZE
+  const options = hasOptions ? (group as { options: ModifierOptionConfig[] }).options ?? [] : []
+
+  return (
+    <div className="border border-[var(--color-border)] rounded-xl p-3 space-y-3 bg-[var(--color-bg)]">
+      {/* Group header */}
+      <div className="flex gap-2 items-start">
+        <div className="flex-1 space-y-2">
+          <input
+            type="text"
+            value={group.name}
+            onChange={e => onChange({ ...group, name: e.target.value })}
+            placeholder="Nombre del grupo (ej. Tamaño, Presentación)"
+            className="w-full px-2 py-1.5 text-sm font-semibold rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+          />
+          <div className="flex gap-2 flex-wrap">
+            <select
+              value={group.inputType}
+              onChange={e => {
+                const t = e.target.value as ModifierInputType
+                const base = { id: group.id, productId: group.productId, name: group.name, required: group.required, multiple: group.multiple, sortOrder: group.sortOrder, conditionalOnOptionId: group.conditionalOnOptionId }
+                if (t === ModifierInputType.SELECT || t === ModifierInputType.SIZE) {
+                  onChange({ ...base, inputType: t, options: [] } as ModifierGroupConfig)
+                } else {
+                  onChange({ ...base, inputType: t } as ModifierGroupConfig)
+                }
+              }}
+              className="px-2 py-1.5 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+            >
+              {Object.values(ModifierInputType).map(t => (
+                <option key={t} value={t}>{MODIFIER_TYPE_LABELS[t]}</option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+              <input
+                type="checkbox"
+                checked={group.required}
+                onChange={e => onChange({ ...group, required: e.target.checked })}
+              />
+              Requerido
+            </label>
+            <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+              <input
+                type="checkbox"
+                checked={group.multiple}
+                onChange={e => onChange({ ...group, multiple: e.target.checked, minSelections: undefined, maxSelections: undefined })}
+              />
+              Múltiple selección
+            </label>
+            {group.multiple && hasOptions && (
+              <>
+                <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                  <span>Mín:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="1"
+                    value={group.minSelections ?? ''}
+                    onChange={e => {
+                      const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1)
+                      onChange({ ...group, minSelections: val })
+                    }}
+                    className="w-14 px-1.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-center"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
+                  <span>Máx:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="∞"
+                    value={group.maxSelections ?? ''}
+                    onChange={e => {
+                      const val = e.target.value === '' ? undefined : Math.max(1, parseInt(e.target.value, 10) || 1)
+                      onChange({ ...group, maxSelections: val })
+                    }}
+                    className="w-14 px-1.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-center"
+                  />
+                </label>
+              </>
+            )}
+          </div>
+          {!group.required && hasOptions && options.some(o => o.priceDelta > 0) && (
+            <p className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 rounded-lg px-2 py-1.5">
+              ⚠ Sin esto, el cajero puede vender este producto en $0.
+            </p>
+          )}
+          {/* Selector condicional: solo si hay otros grupos con opciones */}
+          {allGroups && allGroups.some(g => g.id !== group.id && 'options' in g && (g as { options?: unknown[] }).options?.length) && (
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs text-[var(--color-text-muted)] shrink-0">Activo:</span>
+              <select
+                value={group.conditionalOnOptionId ?? ''}
+                onChange={e => onChange({ ...group, conditionalOnOptionId: e.target.value || null })}
+                className="flex-1 min-w-0 px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+              >
+                <option value="">Siempre</option>
+                {allGroups
+                  .filter(g => g.id !== group.id && 'options' in g && (g as { options?: ModifierOptionConfig[] }).options?.length)
+                  .flatMap(g => {
+                    const opts = (g as { options: ModifierOptionConfig[] }).options
+                    return opts.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        Solo si eligen "{opt.name}" en "{g.name}"
+                      </option>
+                    ))
+                  })
+                }
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1 mt-1">
+          <button
+            type="button"
+            onClick={onDuplicate}
+            title="Duplicar grupo"
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)] text-sm px-1 transition-colors"
+          >
+            ⧉
+          </button>
+          <button type="button" onClick={onRemove} className="text-[var(--color-danger)] text-sm px-1">✕</button>
+        </div>
+      </div>
+
+      {/* Options (SELECT / SIZE) */}
+      {hasOptions && (
+        <div className="space-y-2">
+          {options.map(opt => (
+            <OptionRow
+              key={opt.id}
+              option={opt}
+              onChange={o => updateOption(opt.id, o)}
+              onRemove={() => removeOption(opt.id)}
+              inventoryItems={inventoryItems}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={addOption}
+            className="text-xs text-[var(--color-accent)] hover:underline pl-4"
+          >
+            + Agregar opción
+          </button>
+        </div>
+      )}
+
+      {/* NUMERIC / WEIGHT config */}
+      {(group.inputType === ModifierInputType.NUMERIC || group.inputType === ModifierInputType.WEIGHT) && (
+        <div className="flex gap-3 pl-4 flex-wrap">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--color-text-muted)]">Mín</span>
+            <input
+              type="number"
+              value={(group as { minValue?: number }).minValue ?? ''}
+              onChange={e => onChange({ ...group, minValue: Math.max(0, parseFloat(e.target.value) || 0) } as ModifierGroupConfig)}
+              min="0"
+              className="w-20 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--color-text-muted)]">Máx</span>
+            <input
+              type="number"
+              value={(group as { maxValue?: number }).maxValue ?? ''}
+              onChange={e => onChange({ ...group, maxValue: Math.max(0, parseFloat(e.target.value) || 0) } as ModifierGroupConfig)}
+              min="0"
+              className="w-20 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--color-text-muted)]">Precio por unidad ($)</span>
+            <input
+              type="number"
+              value={((group as { pricePerUnit?: number }).pricePerUnit ?? 0) / 100}
+              onChange={e => onChange({ ...group, pricePerUnit: Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100) } as ModifierGroupConfig)}
+              min="0"
+              className="w-24 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--color-text-muted)]">Unidad</span>
+            <select
+              value={(group as { unit?: string }).unit ?? 'g'}
+              onChange={e => onChange({ ...group, unit: e.target.value } as ModifierGroupConfig)}
+              className="w-20 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+            >
+              {['g', 'kg', 'ml', 'oz', 'bola', 'pza'].map(u => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Product modal (full configurator) ─────────────────────────────────────────
+
+type ModalProduct = Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true })
+
+function ProductModal({
+  product,
+  onSave,
+  onClose,
+}: {
+  product: ModalProduct
+  onSave: (data: Omit<Product, 'id'> & { id?: string }) => Promise<void>
+  onClose: () => void
+}) {
+  const isNew = product === 'new'
+  const isDuplicate = typeof product !== 'string' && '_duplicate' in product
+  const existingProduct = !isNew && !isDuplicate ? product as Product : null
+  const allCats = useSortedCategories(true)
+  const { add: addCat } = useCategoryStore()
+
+  const [form, setForm] = useState<Omit<Product, 'id'>>(
+    isNew ? emptyProduct() : {
+      name: (product as Omit<Product, 'id'>).name,
+      description: (product as Omit<Product, 'id'>).description,
+      category: (product as Omit<Product, 'id'>).category,
+      basePrice: (product as Omit<Product, 'id'>).basePrice,
+      active: (product as Omit<Product, 'id'>).active,
+      imageUrl: (product as Omit<Product, 'id'>).imageUrl,
+      ingredients: (product as Omit<Product, 'id'>).ingredients ?? [],
+      modifierGroups: (product as Omit<Product, 'id'>).modifierGroups ?? [],
+      variants: (product as Omit<Product, 'id'>).variants ?? [],
+      maxFlavors: (product as Omit<Product, 'id'>).maxFlavors ?? 1,
+    }
+  )
+  const branchId = useAuthStore(s => s.branchId)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [tab, setTab] = useState<'basic' | 'modifiers' | 'ingredients'>('basic')
+  const [customCatInput, setCustomCatInput] = useState('')
+  const [showCustomCat, setShowCustomCat] = useState(false)
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
+  const [showZeroPriceModal, setShowZeroPriceModal] = useState(false)
+
+  useEffect(() => {
+    if (!branchId) return
+    api.get<{ data: InventoryItem[] }>(`/api/v1/inventory?branchId=${branchId}`)
+      .then(res => setInventoryItems(res.data))
+      .catch(() => { if (import.meta.env.DEV) setInventoryItems(MOCK_INVENTORY) })
+  }, [branchId])
+
+  const categoryPricingMode = allCats.find(c => c.key === form.category)?.pricingMode ?? PricingMode.FIXED
+  const variantScheme = allCats.find(c => c.key === form.category)?.variantScheme ?? []
+
+  // Mantiene form.variants alineado al esquema de la categoría (agrega faltantes en $0,
+  // conserva precio de las que ya existían por nombre) cada vez que cambian de categoría
+  // o el esquema se edita desde el panel de categorías.
+  useEffect(() => {
+    if (categoryPricingMode !== PricingMode.VARIANTS) return
+    setForm(f => {
+      const synced = syncVariantsToScheme(f.variants ?? [], variantScheme)
+      const unchanged = synced.length === (f.variants ?? []).length
+        && synced.every((v, i) => v.name === f.variants?.[i]?.name && v.price === f.variants?.[i]?.price)
+      return unchanged ? f : { ...f, variants: synced }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryPricingMode, JSON.stringify(variantScheme)])
+
+  function addModifierGroup() {
+    const id = uid()
+    const newGroup: ModifierGroupConfig = {
+      id,
+      productId: existingProduct ? existingProduct.id : 'new',
+      name: '',
+      inputType: ModifierInputType.SELECT,
+      required: true,
+      multiple: false,
+      sortOrder: form.modifierGroups.length,
+      options: [],
+    }
+    setForm(f => ({ ...f, modifierGroups: [...f.modifierGroups, newGroup] }))
+  }
+
+  function updateGroup(id: string, group: ModifierGroupConfig) {
+    setForm(f => ({ ...f, modifierGroups: f.modifierGroups.map(g => g.id === id ? group : g) }))
+  }
+
+  function removeGroup(id: string) {
+    setForm(f => ({ ...f, modifierGroups: f.modifierGroups.filter(g => g.id !== id) }))
+  }
+
+  function duplicateGroup(id: string) {
+    const original = form.modifierGroups.find(g => g.id === id)
+    if (!original) return
+    const newId = uid()
+    const duped = {
+      ...original,
+      id: newId,
+      name: original.name ? `${original.name} (copia)` : '',
+      sortOrder: form.modifierGroups.length,
+      conditionalOnOptionId: null,
+      ...('options' in original && Array.isArray((original as any).options)
+        ? { options: (original as any).options.map((o: any) => ({ ...o, id: uid(), groupId: newId })) }
+        : {}),
+    } as ModifierGroupConfig
+    setForm(f => ({ ...f, modifierGroups: [...f.modifierGroups, duped] }))
+  }
+
+  function buildModifierGroups(groups: ModifierGroupConfig[]) {
+    return groups.map(g => ({
+      ...g,
+      options: 'options' in g && g.options
+        ? g.options.map(o => ({
+            ...o,
+            ingredientMode: o.ingredientMode
+              ? o.ingredientMode.toUpperCase() as 'NONE' | 'MULTIPLY' | 'CUSTOM'
+              : undefined,
+          }))
+        : undefined,
+    }))
+  }
+
+  async function doSave() {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({
+        ...form,
+        modifierGroups: buildModifierGroups(form.modifierGroups),
+        id: existingProduct ? existingProduct.id : undefined,
+      })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('El nombre es obligatorio'); return }
+    if (form.basePrice < 0) { setError('El precio no puede ser negativo'); return }
+    const emptyGroup = form.modifierGroups.find(g => !g.name.trim())
+    if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
+    const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
+    if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
+    if (form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
+      setShowZeroPriceModal(true)
+      return
+    }
+    await doSave()
+  }
+
+  const TABS = [
+    { id: 'basic', label: 'General' },
+    { id: 'modifiers', label: `Extras (${form.modifierGroups.length})` },
+    { id: 'ingredients', label: `Ingredientes (${form.ingredients.length})` },
+  ] as const
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-4xl bg-[var(--color-surface)] rounded-2xl shadow-2xl flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[var(--color-border)]">
+          <h2 className="font-bold text-[var(--color-text-primary)] text-lg">
+            {isNew ? 'Nuevo producto' : isDuplicate ? `Duplicar — ${form.name.replace(' (copia)', '')}` : `Editar — ${existingProduct!.name}`}
+          </h2>
+          <button type="button" onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xl leading-none px-1">×</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-[var(--color-border)] px-5">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={[
+                'py-2.5 px-3 text-sm font-medium border-b-2 -mb-px transition-colors',
+                tab === t.id
+                  ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                  : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
+              ].join(' ')}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-[420px]">
+
+          {/* ── GENERAL ───────────────────────────────────── */}
+          {tab === 'basic' && (
+            <>
+              {/* Photo + name row */}
+              <div className="flex gap-4 items-start">
+                <div className="flex flex-col items-center gap-2">
+                  <ProductThumb name={form.name || '?'} category={form.category} imageUrl={form.imageUrl} size={72} />
+                  <label className="text-xs text-[var(--color-accent)] cursor-pointer hover:underline">
+                    Foto
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const url = URL.createObjectURL(file)
+                        setForm(f => ({ ...f, imageUrl: url }))
+                      }}
+                    />
+                  </label>
+                  {form.imageUrl && (
+                    <button type="button" onClick={() => setForm(f => ({ ...f, imageUrl: null }))} className="text-xs text-[var(--color-danger)] hover:underline">Quitar</button>
+                  )}
+                </div>
+                <div className="flex-1 space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Nombre *</label>
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="ej. Copa de Helado Especial"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Descripción</label>
+                    <textarea
+                      value={form.description}
+                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                      placeholder="Descripción opcional para el menú..."
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Categoría *</label>
+                  {showCustomCat ? (
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={customCatInput}
+                        onChange={e => setCustomCatInput(e.target.value)}
+                        placeholder="Nueva categoría"
+                        autoFocus
+                        className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-accent)] bg-[var(--color-bg)]"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customCatInput.trim()) {
+                            const key = `custom_${Date.now()}`
+                            addCat({ key, label: customCatInput.trim(), emoji: '🏷️', color: '#6b7280', hidden: false })
+                            setForm(f => ({ ...f, category: key }))
+                            setShowCustomCat(false)
+                          }
+                          if (e.key === 'Escape') setShowCustomCat(false)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customCatInput.trim()) {
+                            const key = `custom_${Date.now()}`
+                            addCat({ key, label: customCatInput.trim(), emoji: '🏷️', color: '#6b7280', hidden: false })
+                            setForm(f => ({ ...f, category: key }))
+                          }
+                          setShowCustomCat(false)
+                        }}
+                        className="px-3 py-2 text-sm rounded-lg bg-[var(--color-accent)] text-white"
+                      >OK</button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-1">
+                      <select
+                        value={form.category}
+                        onChange={e => setForm(f => ({ ...f, category: e.target.value as ProductCategory }))}
+                        className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                      >
+                        {allCats.map(cat => (
+                          <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        title="Crear categoría nueva"
+                        onClick={() => { setCustomCatInput(''); setShowCustomCat(true) }}
+                        className="px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+                      >+</button>
+                    </div>
+                  )}
+                </div>
+                {categoryPricingMode !== PricingMode.VARIANTS && (
+                  <div>
+                    <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">
+                      {categoryPricingMode === PricingMode.PRESENTATION ? 'Precio de la presentación *' : 'Precio base *'}
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-[var(--color-text-muted)]">$</span>
+                      <input
+                        type="number"
+                        value={form.basePrice / 100}
+                        onChange={e => setForm(f => ({ ...f, basePrice: Math.round(parseFloat(e.target.value || '0') * 100) }))}
+                        onFocus={e => e.target.select()}
+                        placeholder="35.00"
+                        step="0.50"
+                        min="0"
+                        className="flex-1 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                      />
+                    </div>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">{formatCurrency(form.basePrice)}</p>
+                  </div>
+                )}
+              </div>
+
+              {categoryPricingMode === PricingMode.VARIANTS && (
+                <div>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Precios por variante *</label>
+                  <div className="space-y-1.5">
+                    {(form.variants ?? []).map(v => (
+                      <div key={v.id} className="flex items-center gap-2">
+                        <span className="flex-1 text-sm text-[var(--color-text-secondary)]">{v.name}</span>
+                        <span className="text-sm text-[var(--color-text-muted)]">$</span>
+                        <input
+                          type="number"
+                          value={v.price / 100}
+                          onChange={e => {
+                            const price = Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100)
+                            setForm(f => ({ ...f, variants: (f.variants ?? []).map(x => x.id === v.id ? { ...x, price } : x) }))
+                          }}
+                          onFocus={e => e.target.select()}
+                          placeholder="0.00"
+                          step="0.50"
+                          min="0"
+                          className="w-24 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {(form.variants ?? []).length === 0 && (
+                    <p className="text-xs text-[var(--color-danger)] mt-1">
+                      Esta categoría no tiene esquema de variantes — configúralo en "Categorías".
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {categoryPricingMode === PricingMode.PRESENTATION && (
+                <div>
+                  <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Sabores incluidos *</label>
+                  <input
+                    type="number"
+                    value={form.maxFlavors ?? 1}
+                    onChange={e => setForm(f => ({ ...f, maxFlavors: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
+                    onFocus={e => e.target.select()}
+                    min="1"
+                    className="w-24 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+                  />
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Los sabores se administran en la categoría.</p>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={e => setForm(f => ({ ...f, active: e.target.checked }))}
+                />
+                Activo en el POS (visible para cajeros)
+              </label>
+            </>
+          )}
+
+          {/* ── CONFIGURACIONES / MODIFICADORES ───────────── */}
+          {tab === 'modifiers' && (
+            <div className="space-y-3">
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Agrega grupos de opciones que el cajero verá al agregar este producto. Ejemplos: Tamaño, Presentación (cono/vaso), Temperatura, Toppings, Número de bolas.
+              </p>
+              {form.ingredients.length > 0 && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2">
+                  Este producto tiene {form.ingredients.length} ingrediente{form.ingredients.length > 1 ? 's' : ''} configurado{form.ingredients.length > 1 ? 's' : ''}. Usa el botón <strong>Inventario</strong> en cada opción para definir qué descuenta del stock cuando el cajero la elige.
+                </p>
+              )}
+              {form.modifierGroups.length === 0 && (
+                <div className="text-center py-8 text-[var(--color-text-muted)]">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-[var(--color-bg)] flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.1 4.9A10 10 0 0 0 4.9 19.1M4.9 4.9a10 10 0 0 1 14.2 14.2"/></svg>
+                  </div>
+                  <p className="text-sm">Sin configuraciones — el producto se agrega directo al carrito.</p>
+                </div>
+              )}
+              {form.modifierGroups.map(group => (
+                <ModifierGroupEditor
+                  key={group.id}
+                  group={group}
+                  onChange={g => updateGroup(group.id, g)}
+                  onRemove={() => removeGroup(group.id)}
+                  onDuplicate={() => duplicateGroup(group.id)}
+                  inventoryItems={inventoryItems}
+                  allGroups={form.modifierGroups}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={addModifierGroup}
+                className="w-full py-2.5 rounded-xl border-2 border-dashed border-[var(--color-border)] text-sm text-[var(--color-text-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+              >
+                + Agregar grupo de opciones
+              </button>
+
+            </div>
+          )}
+
+          {/* ── INGREDIENTES ───────────────────────────────── */}
+          {tab === 'ingredients' && (
+            <div className="space-y-3">
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Ingredientes usados en este producto. Se usarán para el control de inventario.
+              </p>
+              <IngredientsEditor
+                ingredients={form.ingredients}
+                inventoryItems={inventoryItems}
+                onChange={ingredients => setForm(f => ({ ...f, ingredients }))}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {error && <p className="px-5 text-xs text-[var(--color-danger)]">{error}</p>}
+        <div className="flex gap-2 px-5 py-4 border-t border-[var(--color-border)]">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !form.name.trim() || form.basePrice < 0}
+            className="flex-1 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
+          >
+            {saving ? 'Guardando…' : 'Guardar producto'}
+          </button>
+        </div>
+      </div>
+
+      {showZeroPriceModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowZeroPriceModal(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-[var(--color-surface)] rounded-2xl shadow-2xl p-5 space-y-3">
+            <h3 className="font-bold text-[var(--color-text-primary)]">¿Guardar en $0?</h3>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Este producto puede venderse en $0 — no tiene ningún grupo requerido con opciones de precio. ¿Guardar así?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowZeroPriceModal(false)}
+                className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowZeroPriceModal(false); doSave() }}
+                className="flex-1 py-2 rounded-xl bg-[var(--color-danger)] text-white text-sm font-bold hover:opacity-90 transition-opacity"
+              >
+                Guardar así
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+}
+
+// ── Mock data ─────────────────────────────────────────────────────────────────
+
+const MOCK_PRODUCTS: Product[] = [
+  { id: 'p1', name: 'Vainilla', description: '', category: ProductCategory.ICE_CREAM, basePrice: 3500, active: true, imageUrl: null, ingredients: [], modifierGroups: [] },
+  { id: 'p2', name: 'Americano', description: '', category: ProductCategory.COFFEE, basePrice: 4000, active: true, imageUrl: null, ingredients: [], modifierGroups: [] },
+  { id: 'p3', name: 'Croissant', description: '', category: ProductCategory.PASTRY, basePrice: 3000, active: true, imageUrl: null, ingredients: [], modifierGroups: [] },
+]
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export function ProductsPage() {
+  const branchId = useAuthStore(s => s.branchId)
+  const [products, setProducts] = useState<Product[]
