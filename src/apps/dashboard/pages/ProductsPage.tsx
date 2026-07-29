@@ -4,7 +4,7 @@ import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
-import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
+import { useCategoryStore, useSortedCategories, type CategoryMeta } from '@/shared/store/categoryStore'
 import { useFlavorStore, useSortedFlavors } from '@/shared/store/flavorStore'
 import { CreateComboModal } from './CreateComboModal'
 
@@ -78,12 +78,6 @@ interface Product {
   variants?: ProductVariant[]  // solo si la categoría es VARIANTS
   maxFlavors?: number          // solo si la categoría es PRESENTATION
 }
-
-const PRICING_MODE_OPTIONS: { value: PricingMode; label: string; example: string }[] = [
-  { value: PricingMode.FIXED, label: 'Precio único', example: 'Cada producto tiene su precio' },
-  { value: PricingMode.VARIANTS, label: 'Por tamaño', example: 'Cada producto tiene precios por tamaño' },
-  { value: PricingMode.PRESENTATION, label: 'Por presentación', example: 'El precio depende de la presentación, no del sabor' },
-]
 
 function pricingModeShortLabel(mode: PricingMode): string {
   return mode === PricingMode.VARIANTS ? 'Variantes' : mode === PricingMode.PRESENTATION ? 'Presentación' : 'Fijo'
@@ -265,6 +259,119 @@ function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; 
         />
         <button type="button" onClick={() => handleAdd()} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar sabor</button>
       </div>
+    </div>
+  )
+}
+
+// ── Panel "Modos de cobro" — agrupa categorías por su forma de cobro; vive aparte
+// de "Categorías" porque mezclar ambas cosas resultaba confuso (ver feedback de
+// producto: era muy rebuscado encontrar dónde cambiar el modo de una categoría) ──
+
+const PRICING_MODE_INFO: Record<PricingMode, { label: string; description: string }> = {
+  [PricingMode.FIXED]: {
+    label: 'Precio único',
+    description: 'Úsalo cuando cada producto de la categoría tiene un solo precio fijo. Es el modo por defecto — la mayoría de las categorías van aquí.',
+  },
+  [PricingMode.VARIANTS]: {
+    label: 'Por tamaño',
+    description: 'Úsalo cuando el precio cambia según el tamaño (ej. Chico, Mediano, Grande) y ese esquema es el mismo para todos los productos de la categoría.',
+  },
+  [PricingMode.PRESENTATION]: {
+    label: 'Por presentación',
+    description: 'Úsalo cuando el precio depende de la presentación o envase (ej. cono, vaso, litro), no del sabor — el sabor elegido no cambia el precio.',
+  },
+}
+
+const PRICING_MODE_ORDER: PricingMode[] = [PricingMode.FIXED, PricingMode.VARIANTS, PricingMode.PRESENTATION]
+
+function PricingModesPanel({
+  categories,
+  products,
+  updateCat,
+  catError,
+}: {
+  categories: CategoryMeta[]
+  products: Product[]
+  updateCat: (key: string, patch: Partial<Pick<CategoryMeta, 'label' | 'emoji' | 'color' | 'hidden' | 'pricingMode' | 'variantScheme'>>) => Promise<void>
+  catError: string | null
+}) {
+  return (
+    <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4 space-y-4">
+      <div>
+        <p className="text-sm font-semibold text-[var(--color-text-primary)]">Modos de cobro</p>
+        <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+          Aquí decides cómo se cobra cada categoría y qué categorías usan cada modo.
+        </p>
+      </div>
+
+      {catError && (
+        <p className="text-xs text-[var(--color-danger)] bg-[var(--color-danger)]/10 rounded-lg px-2 py-1.5">
+          {catError} — el cambio no se guardó, intenta de nuevo.
+        </p>
+      )}
+
+      {PRICING_MODE_ORDER.map(mode => {
+        const info = PRICING_MODE_INFO[mode]
+        const inMode = categories.filter(c => c.pricingMode === mode)
+        const notInMode = categories.filter(c => c.pricingMode !== mode)
+
+        return (
+          <div key={mode} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 space-y-2.5">
+            <div>
+              <p className="text-sm font-bold text-[var(--color-text-primary)]">{info.label}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{info.description}</p>
+            </div>
+
+            <div className="space-y-2">
+              {inMode.length === 0 && (
+                <p className="text-xs italic text-[var(--color-text-muted)]">Ninguna categoría usa este modo todavía.</p>
+              )}
+              {inMode.map(cat => (
+                <div key={cat.key} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-[var(--color-text-primary)]">{cat.emoji} {cat.label}</span>
+                    {mode !== PricingMode.FIXED && (
+                      <button
+                        type="button"
+                        onClick={() => updateCat(cat.key, { pricingMode: PricingMode.FIXED })}
+                        className="text-xs px-2 py-1 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] transition-colors shrink-0"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                  {mode === PricingMode.VARIANTS && (
+                    <VariantSchemeEditor
+                      scheme={cat.variantScheme ?? []}
+                      onChange={scheme => updateCat(cat.key, { variantScheme: scheme })}
+                    />
+                  )}
+                  {mode === PricingMode.PRESENTATION && (
+                    <FlavorManager
+                      categoryId={cat.id}
+                      zeroPriceProducts={products.filter(p => p.category === cat.key && p.basePrice === 0)}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {notInMode.length > 0 && (
+              <select
+                value=""
+                onChange={e => { if (e.target.value) updateCat(e.target.value, { pricingMode: mode }) }}
+                aria-label={`Asignar categoría a ${info.label}`}
+                className="text-xs px-2.5 py-1.5 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]"
+              >
+                <option value="">+ Asignar categoría a este modo…</option>
+                {notInMode.map(c => (
+                  <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1243,7 +1350,7 @@ function ProductModal({
                   </div>
                   {(form.variants ?? []).length === 0 && (
                     <p className="text-xs text-[var(--color-danger)] mt-1">
-                      Esta categoría no tiene esquema de variantes — configúralo en "Categorías".
+                      Esta categoría no tiene esquema de variantes — configúralo en "Modos de cobro".
                     </p>
                   )}
                 </div>
@@ -1260,7 +1367,7 @@ function ProductModal({
                     min="1"
                     className="w-24 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                   />
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Los sabores se administran en la categoría.</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Los sabores se administran en "Modos de cobro".</p>
                 </div>
               )}
 
@@ -1404,7 +1511,7 @@ export function ProductsPage() {
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
-  const [expandedCatKey, setExpandedCatKey] = useState<string | null>(null)
+  const [showPricingPanel, setShowPricingPanel] = useState(false)
   const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
   const catError = useCategoryStore(s => s.error)
@@ -1487,6 +1594,18 @@ export function ProductsPage() {
           </button>
           <button
             type="button"
+            onClick={() => setShowPricingPanel(v => !v)}
+            className={[
+              'px-3 py-2 rounded-xl border text-sm font-semibold transition-colors',
+              showPricingPanel
+                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
+            ].join(' ')}
+          >
+            Modos de cobro
+          </button>
+          <button
+            type="button"
             onClick={() => setShowComboModal(true)}
             className="px-4 py-2 rounded-xl border border-[var(--color-accent)] text-[var(--color-accent)] text-sm font-bold hover:bg-[var(--color-accent)] hover:text-white transition-colors"
           >
@@ -1501,6 +1620,16 @@ export function ProductsPage() {
           </button>
         </div>
       </div>
+
+      {/* Pricing modes panel — separado de Categorías, ver PricingModesPanel arriba */}
+      {showPricingPanel && (
+        <PricingModesPanel
+          categories={allCats}
+          products={products}
+          updateCat={updateCat}
+          catError={catError}
+        />
+      )}
 
       {/* Category management panel */}
       {showCatPanel && (
@@ -1549,16 +1678,11 @@ export function ProductsPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setExpandedCatKey(k => k === cat.key ? null : cat.key)}
-                    className={[
-                      'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors whitespace-nowrap shrink-0',
-                      expandedCatKey === cat.key
-                        ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] text-[var(--color-text-secondary)]',
-                    ].join(' ')}
-                    title="¿Cómo se cobra esta categoría?"
+                    onClick={() => { setShowCatPanel(false); setShowPricingPanel(true) }}
+                    className="text-[0.65rem] px-2 py-1 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors whitespace-nowrap shrink-0"
+                    title="Configurar en Modos de cobro"
                   >
-                    {pricingModeShortLabel(cat.pricingMode)}
+                    {pricingModeShortLabel(cat.pricingMode)} →
                   </button>
                   <button
                     type="button"
@@ -1607,43 +1731,6 @@ export function ProductsPage() {
                   )}
                 </div>
 
-                {expandedCatKey === cat.key && (
-                  <div className="ml-2 pl-3 border-l-2 border-[var(--color-border)] py-2 space-y-2">
-                    <div className="flex items-start gap-2 flex-wrap">
-                      <span className="text-xs text-[var(--color-text-muted)] shrink-0 pt-1.5">¿Cómo se cobra?</span>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {PRICING_MODE_OPTIONS.map(opt => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => updateCat(cat.key, { pricingMode: opt.value })}
-                            title={opt.example}
-                            className={[
-                              'text-xs px-2.5 py-1.5 rounded-xl border transition-colors',
-                              cat.pricingMode === opt.value
-                                ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
-                                : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
-                            ].join(' ')}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {cat.pricingMode === PricingMode.VARIANTS && (
-                      <VariantSchemeEditor
-                        scheme={cat.variantScheme ?? []}
-                        onChange={scheme => updateCat(cat.key, { variantScheme: scheme })}
-                      />
-                    )}
-                    {cat.pricingMode === PricingMode.PRESENTATION && (
-                      <FlavorManager
-                        categoryId={cat.id}
-                        zeroPriceProducts={products.filter(p => p.category === cat.key && p.basePrice === 0)}
-                      />
-                    )}
-                  </div>
-                )}
                 </div>
               )
             })}
