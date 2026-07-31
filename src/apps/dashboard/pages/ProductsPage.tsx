@@ -1405,6 +1405,7 @@ export function ProductsPage() {
   const [newCatError, setNewCatError] = useState('')
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
   const [expandedCatKey, setExpandedCatKey] = useState<string | null>(null)
+  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null)
   const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
   const allCats = useSortedCategories(true)
   const catError = useCategoryStore(s => s.error)
@@ -1443,6 +1444,12 @@ export function ProductsPage() {
   async function handleToggle(p: Product) {
     try { await api.put(`/api/v1/products/${p.id}`, { active: !p.active }) } catch { /* optimistic */ }
     setProducts(prev => prev.map(x => x.id === p.id ? { ...x, active: !x.active } : x))
+  }
+
+  async function handleDelete(p: Product) {
+    await api.delete(`/api/v1/products/${p.id}`)
+    setProducts(prev => prev.filter(x => x.id !== p.id))
+    setConfirmDeleteProductId(null)
   }
 
   function handleDuplicate(p: Product) {
@@ -1767,6 +1774,28 @@ export function ProductsPage() {
                     <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
                       Editar
                     </button>
+                    {confirmDeleteProductId === p.id ? (
+                      <span className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(p)}
+                          className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
+                        >¿Eliminar?</button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteProductId(null)}
+                          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
+                        >✕</button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteProductId(p.id)}
+                        className="text-xs text-[var(--color-danger)] hover:underline"
+                      >
+                        Eliminar
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
