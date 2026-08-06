@@ -86,7 +86,11 @@ export const useCategoryStore = create<CategoryState>()((set, get) => ({
       if (import.meta.env.DEV) {
         set({ categories: MOCK_CATEGORIES, loaded: true, error: null })
       } else {
-        set({ loaded: true, error: errorMessage(err) })
+        // branchId vuelve a null para que la próxima vez que un componente monte
+        // (o el efecto de carga se re-evalúe) reintente el fetch en vez de quedar
+        // permanentemente sin categorías por una falla transitoria (ej. el token
+        // aún no estaba listo en la primera carga tras un refresh de página).
+        set({ branchId: null, loaded: false, error: errorMessage(err) })
       }
     }
   },

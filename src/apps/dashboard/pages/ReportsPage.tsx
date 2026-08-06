@@ -153,14 +153,14 @@ export function ReportsPage() {
   const [productsSold, setProductsSold] = useState<ProductSoldRow[]>([])
 
   const categories = useCategoryStore(s => s.categories)
-  const categoriesLoaded = useCategoryStore(s => s.loaded)
+  const categoriesBranchId = useCategoryStore(s => s.branchId)
   const loadCategories = useCategoryStore(s => s.load)
 
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (branchId && !categoriesLoaded) loadCategories(branchId)
-  }, [branchId, categoriesLoaded, loadCategories])
+    if (branchId && categoriesBranchId !== branchId) loadCategories(branchId)
+  }, [branchId, categoriesBranchId, loadCategories])
 
   useEffect(() => {
     setLoading(true)
