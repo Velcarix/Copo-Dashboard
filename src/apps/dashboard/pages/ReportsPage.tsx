@@ -4,12 +4,29 @@ import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
 import { useAuthStore } from '@/shared/store/authStore'
+import { useCategoryStore } from '@/shared/store/categoryStore'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SalesDay { day: string; total: number; count: number }
 interface OrderItemRow { name: string; quantity: number }
 interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; paymentMethod: string; totalAmount: string; items?: OrderItemRow[] }
+interface ProductSoldRow { name: string; category: string; price: number; quantitySold: number }
+
+// Fallback label map — used when categoryStore hasn't loaded yet or is missing a key.
+const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
+  ICE_CREAM: 'Helados',
+  COFFEE:    'Cafés',
+  BEVERAGE:  'Bebidas',
+  PASTRY:    'Pasteles',
+  SNACK:     'Snacks',
+  COMBO:     'Combos',
+  EXTRA:     'Extras',
+}
+
+function resolveCategoryLabel(key: string, allCats: { key: string; label: string }[]): string {
+  return allCats.find(c => c.key === key)?.label ?? CATEGORY_LABEL_FALLBACK[key] ?? key
+}
 
 interface InventoryRow {
   name: string
@@ -33,6 +50,12 @@ const MOCK_SALES_DAYS: SalesDay[] = Array.from({ length: 7 }, (_, i) => {
   }
 })
 
+const MOCK_PRODUCTS_SOLD: ProductSoldRow[] = [
+  { name: 'Malteada de vainilla', category: 'ICE_CREAM', price: 6500,  quantitySold: 34 },
+  { name: 'Café americano',       category: 'COFFEE',    price: 3500,  quantitySold: 28 },
+  { name: 'Pay de queso',         category: 'PASTRY',    price: 5500,  quantitySold: 12 },
+]
+
 const MOCK_INVENTORY: InventoryRow[] = [
   { name: 'Vainilla',     unit: 'grams',  openingStock: 4000, purchased: 0,    consumed: 3200, waste: 0,   closingStock: 800,  costOfGoods: 19200 },
   { name: 'Chocolate',    unit: 'grams',  openingStock: 5000, purchased: 2000, consumed: 3800, waste: 200, closingStock: 3000, costOfGoods: 22800 },
@@ -50,6 +73,13 @@ const ORDER_COLUMNS = [
   { key: 'employeeName', label: 'Empleado' },
   { key: 'paymentMethod',label: 'Método'   },
   { key: 'totalAmount',  label: 'Total'    },
+]
+
+const PRODUCT_COLUMNS = [
+  { key: 'name',         label: 'Producto'  },
+  { key: 'category',     label: 'Categoría' },
+  { key: 'price',        label: 'Precio'    },
+  { key: 'quantitySold', label: 'Vendidos'  },
 ]
 
 const INVENTORY_COLUMNS = [
@@ -76,6 +106,15 @@ function formatOrderRows(rows: OrderRow[]): Record<string, string | number>[] {
     ...r,
     products: (items ?? []).map(i => i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name).join(', '),
     totalAmount: formatCurrency(Number(r.totalAmount)),
+  }))
+}
+
+function formatProductRows(rows: ProductSoldRow[], categories: { key: string; label: string }[]): Record<string, string | number>[] {
+  return rows.map(r => ({
+    name: r.name,
+    category: resolveCategoryLabel(r.category, categories),
+    price: formatCurrency(r.price),
+    quantitySold: r.quantitySold,
   }))
 }
 
@@ -111,7 +150,17 @@ export function ReportsPage() {
 
   const [inventory, setInventory] = useState<InventoryRow[]>([])
 
+  const [productsSold, setProductsSold] = useState<ProductSoldRow[]>([])
+
+  const categories = useCategoryStore(s => s.categories)
+  const categoriesLoaded = useCategoryStore(s => s.loaded)
+  const loadCategories = useCategoryStore(s => s.load)
+
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (branchId && !categoriesLoaded) loadCategories(branchId)
+  }, [branchId, categoriesLoaded, loadCategories])
 
   useEffect(() => {
     setLoading(true)
@@ -119,14 +168,16 @@ export function ReportsPage() {
       Promise.all([
         api.get<{ data: { data: SalesDay[] } }>(`/api/v1/reports/sales?branchId=${branchId}&from=${from}&to=${to}&groupBy=day`),
         api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?branchId=${branchId}&from=${from}&to=${to}&page=${ordersPage}&limit=20`),
+        api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?branchId=${branchId}&from=${from}&to=${to}`),
       ])
-        .then(([salesRes, ordersRes]) => {
+        .then(([salesRes, ordersRes, productsRes]) => {
           setSalesDays(fillMissingDays(salesRes.data.data, from, to))
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
+          setProductsSold(Array.isArray(productsRes.data) ? productsRes.data : [])
         })
         .catch(() => {
-          if (import.meta.env.DEV) { setSalesDays(MOCK_SALES_DAYS); setOrders([]); setOrdersTotal(0) }
+          if (import.meta.env.DEV) { setSalesDays(MOCK_SALES_DAYS); setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD) }
         })
         .finally(() => setLoading(false))
     } else {
@@ -213,6 +264,17 @@ export function ReportsPage() {
                 page={ordersPage}
                 onPageChange={setOrdersPage}
               />
+
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-2">Productos vendidos</h2>
+                <ReportTable
+                  columns={PRODUCT_COLUMNS}
+                  data={formatProductRows(productsSold, categories)}
+                  total={productsSold.length}
+                  page={1}
+                  onPageChange={() => {}}
+                />
+              </div>
             </div>
           )}
 

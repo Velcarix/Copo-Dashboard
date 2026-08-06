@@ -36,4 +36,13 @@ describe('ReportsPage', () => {
       expect(screen.getByText('Vainilla')).toBeInTheDocument()
     })
   })
+
+  it('renders productos vendidos table with mock data on Ventas tab', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+    await waitFor(() => {
+      expect(screen.getByText('Productos vendidos')).toBeInTheDocument()
+      expect(screen.getByText('Malteada de vainilla')).toBeInTheDocument()
+      expect(screen.getByText('Vendidos')).toBeInTheDocument()
+    })
+  })
 })
