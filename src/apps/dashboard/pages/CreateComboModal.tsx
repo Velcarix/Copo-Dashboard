@@ -111,12 +111,12 @@ export function CreateComboModal({ products, branchId, onClose, onCreated }: Pro
       <div className="bg-[var(--color-surface)] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--color-border)]">
           <h2 className="text-base font-bold text-[var(--color-text-primary)]">Crear combo</h2>
           <button type="button" onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xl leading-none">✕</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
 
           {/* Nombre */}
           <div>
@@ -239,7 +239,7 @@ export function CreateComboModal({ products, branchId, onClose, onCreated }: Pro
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[var(--color-border)] space-y-2">
+        <div className="px-4 sm:px-6 py-4 border-t border-[var(--color-border)] space-y-2">
           {components.length < 2 && (
             <p className="text-xs text-center text-[var(--color-text-muted)]">Selecciona al menos 2 productos</p>
           )}

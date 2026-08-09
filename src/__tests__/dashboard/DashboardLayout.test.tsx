@@ -21,8 +21,10 @@ describe('DashboardLayout', () => {
 
   it('renders nav links', () => {
     render(<Wrapper />)
-    expect(screen.getByText('Inicio')).toBeInTheDocument()
-    expect(screen.getByText('Inventario')).toBeInTheDocument()
-    expect(screen.getByText('Productos')).toBeInTheDocument()
+    // Labels appear twice by design: once in the desktop sidebar, once in the
+    // mobile bottom nav (both exist in the DOM, toggled via CSS breakpoints).
+    expect(screen.getAllByText('Inicio').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Inventario').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Productos').length).toBeGreaterThan(0)
   })
 })

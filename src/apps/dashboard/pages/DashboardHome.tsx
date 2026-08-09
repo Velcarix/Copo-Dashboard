@@ -475,24 +475,26 @@ export function DashboardHome() {
           <div className="px-4 py-3 border-b border-[var(--color-border)]">
             <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Ventas por empleado</p>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)]">
-                {['Empleado', 'Órdenes', 'Total'].map(h => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-[var(--color-text-muted)]">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data!.salesByEmployee.map((e, i) => (
-                <tr key={i} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
-                  <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">{e.name}</td>
-                  <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{e.orders}</td>
-                  <td className="px-4 py-2.5 font-semibold text-[var(--color-text-primary)]">{formatCurrency(e.total)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-border)]">
+                  {['Empleado', 'Órdenes', 'Total'].map(h => (
+                    <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data!.salesByEmployee.map((e, i) => (
+                  <tr key={i} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
+                    <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)] whitespace-nowrap">{e.name}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{e.orders}</td>
+                    <td className="px-4 py-2.5 font-semibold text-[var(--color-text-primary)] whitespace-nowrap">{formatCurrency(e.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

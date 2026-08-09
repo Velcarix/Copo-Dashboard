@@ -276,9 +276,9 @@ export function ComanderoConfigPage() {
           {waiters.filter(w => w.active).map(w => {
             const assignedTables = tables.filter(t => t.waiterId === w.id)
             return (
-              <div key={w.id} className="flex items-center justify-between px-4 py-3">
+              <div key={w.id} className="flex flex-col gap-0.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <p className="text-sm font-medium text-[var(--color-text-primary)]">👤 {w.name}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-xs text-[var(--color-text-muted)] sm:text-right">
                   {assignedTables.length > 0
                     ? assignedTables.map(t => t.name).join(', ')
                     : 'Sin mesas asignadas'}

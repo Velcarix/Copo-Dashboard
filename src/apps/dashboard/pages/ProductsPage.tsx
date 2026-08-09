@@ -596,13 +596,13 @@ function OptionRow({
 
   return (
     <div className="pl-4 space-y-1">
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <input
           type="text"
           value={option.name}
           onChange={e => onChange({ ...option, name: e.target.value })}
           placeholder="Nombre (ej. Grande)"
-          className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+          className="flex-1 min-w-[120px] px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
         />
         <div className="flex items-center gap-1">
           <span className="text-xs text-[var(--color-text-muted)]">+$</span>
@@ -1069,14 +1069,14 @@ function ProductModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-[var(--color-border)] px-5">
+        <div className="flex border-b border-[var(--color-border)] px-5 overflow-x-auto">
           {TABS.map(t => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
               className={[
-                'py-2.5 px-3 text-sm font-medium border-b-2 -mb-px transition-colors',
+                'py-2.5 px-3 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0',
                 tab === t.id
                   ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
                   : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
@@ -1088,7 +1088,7 @@ function ProductModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-[420px]">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 min-h-[420px]">
 
           {/* ── GENERAL ───────────────────────────────────── */}
           {tab === 'basic' && (
@@ -1139,7 +1139,7 @@ function ProductModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Categoría *</label>
                   {showCustomCat ? (
@@ -1479,7 +1479,7 @@ export function ProductsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Productos</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => { setShowCatPanel(v => !v); setNewCatError('') }}
@@ -1533,85 +1533,89 @@ export function ProductsPage() {
             {allCats.map((cat, idx) => {
               return (
                 <div key={cat.key} className="space-y-1">
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
-                  <input
-                    type="text"
-                    value={cat.emoji}
-                    onChange={e => updateCat(cat.key, { emoji: e.target.value })}
-                    className="w-9 text-center text-lg bg-transparent border-none outline-none"
-                    maxLength={2}
-                  />
-                  <input
-                    type="text"
-                    value={cat.label}
-                    onChange={e => updateCat(cat.key, { label: e.target.value })}
-                    className="flex-1 min-w-0 text-sm px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus:outline-none focus:border-[var(--color-accent)]"
-                  />
-                  <input
-                    type="color"
-                    value={cat.color}
-                    onChange={e => updateCat(cat.key, { color: e.target.value })}
-                    title="Color"
-                    className="w-7 h-7 rounded-lg cursor-pointer border border-[var(--color-border)] p-0.5 bg-transparent"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setExpandedCatKey(k => k === cat.key ? null : cat.key)}
-                    className={[
-                      'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors whitespace-nowrap shrink-0',
-                      expandedCatKey === cat.key
-                        ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] text-[var(--color-text-secondary)]',
-                    ].join(' ')}
-                    title="¿Cómo se cobra esta categoría?"
-                  >
-                    {pricingModeShortLabel(cat.pricingMode)}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateCat(cat.key, { hidden: !cat.hidden })}
-                    className={[
-                      'text-xs px-2 py-1 rounded-lg border transition-colors shrink-0',
-                      cat.hidden
-                        ? 'border-[var(--color-border)] text-[var(--color-text-muted)]'
-                        : 'border-[var(--color-accent)] text-[var(--color-accent)]',
-                    ].join(' ')}
-                  >
-                    {cat.hidden ? 'Oculta' : 'Visible'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveCat(cat.key, 'up')}
-                    disabled={idx === 0}
-                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
-                  >↑</button>
-                  <button
-                    type="button"
-                    onClick={() => moveCat(cat.key, 'down')}
-                    disabled={idx === allCats.length - 1}
-                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
-                  >↓</button>
-                  {confirmDeleteKey === cat.key ? (
-                    <div className="flex items-center gap-1 ml-1">
-                      <button
-                        type="button"
-                        onClick={() => { removeCat(cat.key); setConfirmDeleteKey(null) }}
-                        className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
-                      >¿Eliminar?</button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteKey(null)}
-                        className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
-                      >✕</button>
-                    </div>
-                  ) : (
+                <div className="flex flex-col gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <input
+                      type="text"
+                      value={cat.emoji}
+                      onChange={e => updateCat(cat.key, { emoji: e.target.value })}
+                      className="w-9 shrink-0 text-center text-lg bg-transparent border-none outline-none"
+                      maxLength={2}
+                    />
+                    <input
+                      type="text"
+                      value={cat.label}
+                      onChange={e => updateCat(cat.key, { label: e.target.value })}
+                      className="flex-1 min-w-0 text-sm px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus:outline-none focus:border-[var(--color-accent)]"
+                    />
+                    <input
+                      type="color"
+                      value={cat.color}
+                      onChange={e => updateCat(cat.key, { color: e.target.value })}
+                      title="Color"
+                      className="w-7 h-7 shrink-0 rounded-lg cursor-pointer border border-[var(--color-border)] p-0.5 bg-transparent"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setConfirmDeleteKey(cat.key)}
-                      className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors text-xs ml-1"
-                      title="Eliminar categoría"
-                    >✕</button>
-                  )}
+                      onClick={() => setExpandedCatKey(k => k === cat.key ? null : cat.key)}
+                      className={[
+                        'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors whitespace-nowrap shrink-0',
+                        expandedCatKey === cat.key
+                          ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                          : 'border-[var(--color-border)] text-[var(--color-text-secondary)]',
+                      ].join(' ')}
+                      title="¿Cómo se cobra esta categoría?"
+                    >
+                      {pricingModeShortLabel(cat.pricingMode)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCat(cat.key, { hidden: !cat.hidden })}
+                      className={[
+                        'text-xs px-2 py-1 rounded-lg border transition-colors shrink-0',
+                        cat.hidden
+                          ? 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                          : 'border-[var(--color-accent)] text-[var(--color-accent)]',
+                      ].join(' ')}
+                    >
+                      {cat.hidden ? 'Oculta' : 'Visible'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveCat(cat.key, 'up')}
+                      disabled={idx === 0}
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
+                    >↑</button>
+                    <button
+                      type="button"
+                      onClick={() => moveCat(cat.key, 'down')}
+                      disabled={idx === allCats.length - 1}
+                      className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
+                    >↓</button>
+                    {confirmDeleteKey === cat.key ? (
+                      <div className="flex items-center gap-1 ml-1">
+                        <button
+                          type="button"
+                          onClick={() => { removeCat(cat.key); setConfirmDeleteKey(null) }}
+                          className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
+                        >¿Eliminar?</button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteKey(null)}
+                          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteKey(cat.key)}
+                        className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors text-xs ml-1"
+                        title="Eliminar categoría"
+                      >✕</button>
+                    )}
+                  </div>
                 </div>
 
                 {expandedCatKey === cat.key && (
@@ -1718,90 +1722,92 @@ export function ProductsPage() {
 
       {/* Table */}
       <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--color-border)]">
-              {['Nombre', 'Categoría', 'Precio base', 'Opciones', 'Estado', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-[var(--color-text-muted)] text-sm">
-                  Sin productos{search ? ` para "${search}"` : ''}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="border-b border-[var(--color-border)]">
+                {['Nombre', 'Categoría', 'Precio base', 'Opciones', 'Estado', ''].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
               </tr>
-            )}
-            {filtered.map(p => (
-              <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <ProductThumb name={p.name} category={p.category} imageUrl={p.imageUrl} size={36} />
-                    <span className="font-medium text-[var(--color-text-primary)]">{p.name}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{resolveCategoryLabel(p.category, allCats)}</td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                  {allCats.find(c => c.key === p.category)?.pricingMode === PricingMode.VARIANTS
-                    ? ((p.variants ?? []).some(v => v.active && v.price > 0)
-                        ? `desde ${formatCurrency(Math.min(...(p.variants ?? []).filter(v => v.active && v.price > 0).map(v => v.price)))}`
-                        : <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Incompleto</span>)
-                    : formatCurrency(p.basePrice)
-                  }
-                </td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                  {(p.modifierGroups ?? []).length > 0
-                    ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{(p.modifierGroups ?? []).length} grupo{(p.modifierGroups ?? []).length > 1 ? 's' : ''}</span>
-                    : <span className="text-xs text-[var(--color-text-muted)]">—</span>
-                  }
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => handleToggle(p)}
-                    className={['px-2 py-0.5 rounded-full text-xs font-semibold', p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}
-                  >
-                    {p.active ? 'Activo' : 'Inactivo'}
-                  </button>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => handleDuplicate(p)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline">
-                      Duplicar
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-[var(--color-text-muted)] text-sm">
+                    Sin productos{search ? ` para "${search}"` : ''}
+                  </td>
+                </tr>
+              )}
+              {filtered.map(p => (
+                <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <ProductThumb name={p.name} category={p.category} imageUrl={p.imageUrl} size={36} />
+                      <span className="font-medium text-[var(--color-text-primary)] whitespace-nowrap">{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">{resolveCategoryLabel(p.category, allCats)}</td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">
+                    {allCats.find(c => c.key === p.category)?.pricingMode === PricingMode.VARIANTS
+                      ? ((p.variants ?? []).some(v => v.active && v.price > 0)
+                          ? `desde ${formatCurrency(Math.min(...(p.variants ?? []).filter(v => v.active && v.price > 0).map(v => v.price)))}`
+                          : <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Incompleto</span>)
+                      : formatCurrency(p.basePrice)
+                    }
+                  </td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">
+                    {(p.modifierGroups ?? []).length > 0
+                      ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{(p.modifierGroups ?? []).length} grupo{(p.modifierGroups ?? []).length > 1 ? 's' : ''}</span>
+                      : <span className="text-xs text-[var(--color-text-muted)]">—</span>
+                    }
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => handleToggle(p)}
+                      className={['px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap', p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}
+                    >
+                      {p.active ? 'Activo' : 'Inactivo'}
                     </button>
-                    <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
-                      Editar
-                    </button>
-                    {confirmDeleteProductId === p.id ? (
-                      <span className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(p)}
-                          className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
-                        >¿Eliminar?</button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteProductId(null)}
-                          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
-                        >✕</button>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteProductId(p.id)}
-                        className="text-xs text-[var(--color-danger)] hover:underline"
-                      >
-                        Eliminar
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      <button type="button" onClick={() => handleDuplicate(p)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline">
+                        Duplicar
                       </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
+                        Editar
+                      </button>
+                      {confirmDeleteProductId === p.id ? (
+                        <span className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(p)}
+                            className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
+                          >¿Eliminar?</button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteProductId(null)}
+                            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
+                          >✕</button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteProductId(p.id)}
+                          className="text-xs text-[var(--color-danger)] hover:underline"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {modal !== null && (

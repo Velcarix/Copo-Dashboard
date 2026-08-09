@@ -142,7 +142,7 @@ export function TablesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Mesas</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{tables.length} mesa{tables.length !== 1 ? 's' : ''} configurada{tables.length !== 1 ? 's' : ''}</p>
@@ -176,53 +176,55 @@ export function TablesPage() {
             Sin mesas. Agrega la primera.
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] text-xs uppercase tracking-wide">
-                <th className="text-left px-4 py-3">Nombre</th>
-                <th className="text-left px-4 py-3">Capacidad</th>
-                <th className="text-left px-4 py-3">Estado</th>
-                <th className="text-left px-4 py-3">Mesero</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {tables.map(t => (
-                <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
-                  <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">{t.name}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{t.capacity} personas</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[t.status]}`}>
-                      {STATUS_LABEL[t.status]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-[var(--color-text-muted)]">
-                    {t.waiterName ?? '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(t)}
-                        className="text-xs text-[var(--color-accent)] hover:underline"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(t.id)}
-                        disabled={deletingId === t.id || t.status === 'occupied'}
-                        title={t.status === 'occupied' ? 'No se puede borrar una mesa ocupada' : undefined}
-                        className="text-xs text-[var(--color-danger)] hover:underline disabled:opacity-30"
-                      >
-                        {deletingId === t.id ? '…' : 'Eliminar'}
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] text-xs uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Nombre</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Capacidad</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Estado</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Mesero</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {tables.map(t => (
+                  <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
+                    <td className="px-4 py-3 font-medium text-[var(--color-text-primary)] whitespace-nowrap">{t.name}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">{t.capacity} personas</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${STATUS_COLOR[t.status]}`}>
+                        {STATUS_LABEL[t.status]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">
+                      {t.waiterName ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2 justify-end whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(t)}
+                          className="text-xs text-[var(--color-accent)] hover:underline"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(t.id)}
+                          disabled={deletingId === t.id || t.status === 'occupied'}
+                          title={t.status === 'occupied' ? 'No se puede borrar una mesa ocupada' : undefined}
+                          className="text-xs text-[var(--color-danger)] hover:underline disabled:opacity-30"
+                        >
+                          {deletingId === t.id ? '…' : 'Eliminar'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { CopoLogo } from '@/shared/components/CopoLogo'
 import { BranchSelector } from '@/shared/components/BranchSelector'
@@ -186,6 +186,17 @@ export function DashboardLayout() {
   const { logout, user, permissions } = useAuthStore()
   const hasComandero = permissions?.canAccessComandero ?? false
   const items = NAV_ITEMS.filter(item => !item.comanderoOnly || hasComandero)
+  const [moreOpen, setMoreOpen] = useState(false)
+
+  const PRIMARY_COUNT = 4
+  const primaryItems = items.slice(0, PRIMARY_COUNT)
+  const overflowItems = items.slice(PRIMARY_COUNT)
+  const location = useLocation()
+  const isOverflowActive = overflowItems.some(item =>
+    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
+  )
+
+  useEffect(() => { setMoreOpen(false) }, [location.pathname])
 
   return (
     <div className="flex h-dvh bg-[var(--color-bg)]">
@@ -271,23 +282,92 @@ export function DashboardLayout() {
           <Outlet />
         </main>
 
-        {/* Mobile bottom nav — max 5 items */}
-        <nav className="md:hidden flex border-t border-[var(--color-border)] bg-[var(--color-surface)]">
-          {items.slice(0, 5).map(item => (
+        {/* Mobile bottom nav — 4 primary items + "Más" for the rest */}
+        <nav className="md:hidden flex border-t border-[var(--color-border)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)]">
+          {primaryItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
               aria-label={item.label}
               className={({ isActive }) => [
-                'flex-1 flex flex-col items-center py-2.5 transition-colors',
+                'flex-1 flex flex-col items-center gap-0.5 py-2 min-w-0 transition-colors',
                 isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]',
               ].join(' ')}
             >
               {item.icon}
+              <span className="text-[10px] font-medium leading-none truncate max-w-full px-0.5">{item.label}</span>
             </NavLink>
           ))}
+          {overflowItems.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              aria-label="Más opciones"
+              aria-expanded={moreOpen}
+              className={[
+                'flex-1 flex flex-col items-center gap-0.5 py-2 min-w-0 transition-colors',
+                moreOpen || isOverflowActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]',
+              ].join(' ')}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="shrink-0">
+                <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+              </svg>
+              <span className="text-[10px] font-medium leading-none">Más</span>
+            </button>
+          )}
         </nav>
+
+        {/* Mobile "more" sheet — remaining nav items */}
+        {moreOpen && (
+          <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Más opciones">
+            <div
+              className="absolute inset-0 bg-black/40 animate-[fadeIn_150ms_ease-out]"
+              onClick={() => setMoreOpen(false)}
+            />
+            <div className="absolute left-0 right-0 bottom-0 bg-[var(--color-surface)] rounded-t-2xl border-t border-[var(--color-border)] shadow-2xl pb-[calc(env(safe-area-inset-bottom)+0.5rem)] animate-[slideUp_180ms_ease-out]">
+              <div className="flex items-center justify-center pt-2.5 pb-1">
+                <div className="w-9 h-1 rounded-full bg-[var(--color-border)]" />
+              </div>
+              <div className="flex items-center justify-between px-4 pb-2">
+                <p className="text-sm font-semibold text-[var(--color-text-primary)]">Más opciones</p>
+                {user && <p className="text-[11px] text-[var(--color-text-muted)] truncate max-w-[45%]">{user.name}</p>}
+              </div>
+              <SwitchBranchDropdown />
+              <div className="grid grid-cols-3 gap-1 px-3 pb-2">
+                {overflowItems.map(item => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    onClick={() => setMoreOpen(false)}
+                    className={({ isActive }) => [
+                      'flex flex-col items-center justify-center gap-1.5 rounded-xl py-3 transition-colors',
+                      isActive
+                        ? 'bg-[var(--color-accent)] text-white'
+                        : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-border)]',
+                    ].join(' ')}
+                  >
+                    {item.icon}
+                    <span className="text-[11px] font-medium leading-none text-center">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+              <div className="border-t border-[var(--color-border)] mt-1 px-4 py-3 flex items-center justify-between">
+                <ThemeToggle />
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="text-xs font-medium text-[var(--color-danger)] px-3 py-1.5 rounded-lg border border-[var(--color-danger)]"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

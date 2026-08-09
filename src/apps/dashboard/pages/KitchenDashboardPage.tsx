@@ -284,50 +284,54 @@ export function KitchenDashboardPage() {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="bg-[var(--color-surface)] rounded-2xl p-4 border border-[var(--color-border)]">
               <p className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">Tiempo promedio por artículo</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="text-left text-xs text-[var(--color-text-muted)] pb-2">Producto</th>
-                    <th className="text-right text-xs text-[var(--color-text-muted)] pb-2">Prom.</th>
-                    <th className="text-right text-xs text-[var(--color-text-muted)] pb-2"># Ord.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  {(metrics?.avgByProduct ?? []).length === 0 ? (
-                    <tr><td colSpan={3} className="py-6 text-center text-xs text-[var(--color-text-muted)]">Sin datos</td></tr>
-                  ) : (metrics?.avgByProduct ?? []).map(row => (
-                    <tr key={row.product}>
-                      <td className="py-2 text-[var(--color-text-primary)]">{row.product}</td>
-                      <td className="py-2 text-right font-mono text-sm">{row.avgMinutes.toFixed(1)} min</td>
-                      <td className="py-2 text-right text-[var(--color-text-muted)]">{row.count}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[280px]">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-xs text-[var(--color-text-muted)] pb-2">Producto</th>
+                      <th className="text-right text-xs text-[var(--color-text-muted)] pb-2">Prom.</th>
+                      <th className="text-right text-xs text-[var(--color-text-muted)] pb-2"># Ord.</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {(metrics?.avgByProduct ?? []).length === 0 ? (
+                      <tr><td colSpan={3} className="py-6 text-center text-xs text-[var(--color-text-muted)]">Sin datos</td></tr>
+                    ) : (metrics?.avgByProduct ?? []).map(row => (
+                      <tr key={row.product}>
+                        <td className="py-2 text-[var(--color-text-primary)] whitespace-nowrap">{row.product}</td>
+                        <td className="py-2 text-right font-mono text-sm whitespace-nowrap">{row.avgMinutes.toFixed(1)} min</td>
+                        <td className="py-2 text-right text-[var(--color-text-muted)]">{row.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="bg-[var(--color-surface)] rounded-2xl p-4 border border-[var(--color-border)]">
               <p className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">Top órdenes más lentas</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="text-left text-xs text-[var(--color-text-muted)] pb-2">Orden</th>
-                    <th className="text-left text-xs text-[var(--color-text-muted)] pb-2">Producto</th>
-                    <th className="text-right text-xs text-[var(--color-text-muted)] pb-2">Tiempo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  {(metrics?.slowestOrders ?? []).length === 0 ? (
-                    <tr><td colSpan={3} className="py-6 text-center text-xs text-[var(--color-text-muted)]">Sin datos</td></tr>
-                  ) : (metrics?.slowestOrders ?? []).map(row => (
-                    <tr key={row.orderNumber}>
-                      <td className="py-2 font-mono text-xs text-[var(--color-text-primary)]">{row.orderNumber}</td>
-                      <td className="py-2 text-[var(--color-text-secondary)] truncate max-w-[90px]">{row.product}</td>
-                      <td className="py-2 text-right font-mono text-sm text-red-500 font-medium">{row.minutes.toFixed(1)} min</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[280px]">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-xs text-[var(--color-text-muted)] pb-2">Orden</th>
+                      <th className="text-left text-xs text-[var(--color-text-muted)] pb-2">Producto</th>
+                      <th className="text-right text-xs text-[var(--color-text-muted)] pb-2">Tiempo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {(metrics?.slowestOrders ?? []).length === 0 ? (
+                      <tr><td colSpan={3} className="py-6 text-center text-xs text-[var(--color-text-muted)]">Sin datos</td></tr>
+                    ) : (metrics?.slowestOrders ?? []).map(row => (
+                      <tr key={row.orderNumber}>
+                        <td className="py-2 font-mono text-xs text-[var(--color-text-primary)] whitespace-nowrap">{row.orderNumber}</td>
+                        <td className="py-2 text-[var(--color-text-secondary)] truncate max-w-[90px]">{row.product}</td>
+                        <td className="py-2 text-right font-mono text-sm text-red-500 font-medium whitespace-nowrap">{row.minutes.toFixed(1)} min</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -364,50 +368,52 @@ export function KitchenDashboardPage() {
             </div>
 
             <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--color-border)]">
-                    {['Usuario', 'Acción', 'Orden', 'Detalle', 'Hora'].map((h, i) => (
-                      <th
-                        key={h}
-                        className={[
-                          'px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide',
-                          i === 4 ? 'text-right' : 'text-left',
-                        ].join(' ')}
-                      >
-                        {h}
-                      </th>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[640px]">
+                  <thead>
+                    <tr className="border-b border-[var(--color-border)]">
+                      {['Usuario', 'Acción', 'Orden', 'Detalle', 'Hora'].map((h, i) => (
+                        <th
+                          key={h}
+                          className={[
+                            'px-4 py-3 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap',
+                            i === 4 ? 'text-right' : 'text-left',
+                          ].join(' ')}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {auditLoading ? (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-center text-sm text-[var(--color-text-muted)]">Cargando…</td>
+                      </tr>
+                    ) : auditEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-center text-sm text-[var(--color-text-muted)]">
+                          Sin registros para los filtros seleccionados
+                        </td>
+                      </tr>
+                    ) : auditEntries.map(entry => (
+                      <tr key={entry.id} className="hover:bg-[var(--color-border)]/30 transition-colors">
+                        <td className="px-4 py-3 text-[var(--color-text-primary)] font-medium whitespace-nowrap">{entry.userName}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${ACTION_COLOR[entry.action]}`}>
+                            {ACTION_LABEL[entry.action]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-secondary)] whitespace-nowrap">{entry.orderId}</td>
+                        <td className="px-4 py-3 text-[var(--color-text-secondary)]">{entry.detail ?? '—'}</td>
+                        <td className="px-4 py-3 text-right text-xs text-[var(--color-text-muted)] whitespace-nowrap">
+                          {new Date(entry.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                      </tr>
                     ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  {auditLoading ? (
-                    <tr>
-                      <td colSpan={5} className="py-10 text-center text-sm text-[var(--color-text-muted)]">Cargando…</td>
-                    </tr>
-                  ) : auditEntries.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-10 text-center text-sm text-[var(--color-text-muted)]">
-                        Sin registros para los filtros seleccionados
-                      </td>
-                    </tr>
-                  ) : auditEntries.map(entry => (
-                    <tr key={entry.id} className="hover:bg-[var(--color-border)]/30 transition-colors">
-                      <td className="px-4 py-3 text-[var(--color-text-primary)] font-medium">{entry.userName}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_COLOR[entry.action]}`}>
-                          {ACTION_LABEL[entry.action]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-secondary)]">{entry.orderId}</td>
-                      <td className="px-4 py-3 text-[var(--color-text-secondary)]">{entry.detail ?? '—'}</td>
-                      <td className="px-4 py-3 text-right text-xs text-[var(--color-text-muted)]">
-                        {new Date(entry.timestamp).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

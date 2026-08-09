@@ -167,7 +167,7 @@ function PasswordConfirmModal({ onConfirm, onCancel, error }: PasswordModalProps
   const [password, setPassword] = useState('')
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
       <div className="relative z-10 w-full max-w-xs bg-[var(--color-surface)] rounded-2xl p-5 shadow-2xl">
         <div className="text-center mb-4">
@@ -626,7 +626,7 @@ export function EmployeesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Empleados</h1>
         <button type="button" onClick={openNew}
           className="px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold">
@@ -636,89 +636,91 @@ export function EmployeesPage() {
 
       {/* Employee table */}
       <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--color-border)]">
-              {['Nombre', 'Rol', 'Sucursales', 'Contraseña', 'Estado', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {employees.map(emp => (
-              <tr key={emp.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
-                <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
-                  {emp.name}
-                </td>
-                <td className="px-4 py-3 text-[var(--color-text-secondary)]">{ROLE_LABELS[emp.role]}</td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
+            <thead>
+              <tr className="border-b border-[var(--color-border)]">
+                {['Nombre', 'Rol', 'Sucursales', 'Contraseña', 'Estado', ''].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map(emp => (
+                <tr key={emp.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
+                  <td className="px-4 py-3 font-medium text-[var(--color-text-primary)] whitespace-nowrap">
+                    {emp.name}
+                  </td>
+                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">{ROLE_LABELS[emp.role]}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1 min-w-[120px]">
+                      {(() => {
+                        const branchList: EmployeeBranchEntry[] = emp.branches && emp.branches.length > 0
+                          ? emp.branches
+                          : emp.branchId
+                            ? [{ id: emp.branchId, name: allBranches.find(b => b.id === emp.branchId)?.name ?? emp.branchId, role: emp.role, isPrimary: true }]
+                            : []
+                        return branchList.length > 0 ? branchList.map(b => (
+                          <span
+                            key={b.id}
+                            className={[
+                              'text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap',
+                              b.isPrimary
+                                ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                                : 'bg-[var(--color-border)] text-[var(--color-text-secondary)]',
+                            ].join(' ')}
+                          >
+                            {b.name}
+                          </span>
+                        )) : <span className="text-[10px] text-[var(--color-text-muted)]">—</span>
+                      })()}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
                     {(() => {
-                      const branchList: EmployeeBranchEntry[] = emp.branches && emp.branches.length > 0
-                        ? emp.branches
-                        : emp.branchId
-                          ? [{ id: emp.branchId, name: allBranches.find(b => b.id === emp.branchId)?.name ?? emp.branchId, role: emp.role, isPrimary: true }]
-                          : []
-                      return branchList.length > 0 ? branchList.map(b => (
-                        <span
-                          key={b.id}
-                          className={[
-                            'text-[10px] px-2 py-0.5 rounded-full font-medium',
-                            b.isPrimary
-                              ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
-                              : 'bg-[var(--color-border)] text-[var(--color-text-secondary)]',
-                          ].join(' ')}
-                        >
-                          {b.name}
+                      const hasPassword = emp.hasPassword || (emp as any).has_password;
+                      return (
+                        <span className={['px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap', hasPassword ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
+                          {hasPassword ? 'Configurado' : 'Sin contraseña'}
                         </span>
-                      )) : <span className="text-[10px] text-[var(--color-text-muted)]">—</span>
+                      )
                     })()}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  {(() => {
-                    const hasPassword = emp.hasPassword || (emp as any).has_password;
-                    return (
-                      <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', hasPassword ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
-                        {hasPassword ? 'Configurado' : 'Sin contraseña'}
-                      </span>
-                    )
-                  })()}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={['px-2 py-0.5 rounded-full text-xs font-semibold', emp.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
-                    {emp.active ? 'Activo' : 'Inactivo'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(emp)}
-                      className="text-xs text-[var(--color-accent)] hover:underline"
-                    >
-                      Editar
-                    </button>
-                    {emp.role !== EmployeeRole.OWNER && (
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={['px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap', emp.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}>
+                      {emp.active ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3 whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => { setDeleteTarget(emp); setDeleteError('') }}
-                        className="text-xs text-[var(--color-danger)] hover:underline"
+                        onClick={() => openEdit(emp)}
+                        className="text-xs text-[var(--color-accent)] hover:underline"
                       >
-                        Eliminar
+                        Editar
                       </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      {emp.role !== EmployeeRole.OWNER && (
+                        <button
+                          type="button"
+                          onClick={() => { setDeleteTarget(emp); setDeleteError('') }}
+                          className="text-xs text-[var(--color-danger)] hover:underline"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Edit / New modal */}
       {editEmployee !== null && !showPasswordModal && !showCustomPermissions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={closeModal} />
           <div className="relative z-10 w-full max-w-sm bg-[var(--color-surface)] rounded-2xl p-5 shadow-xl overflow-y-auto max-h-[90dvh]">
             <h2 className="font-bold text-[var(--color-text-primary)] mb-4">
@@ -944,7 +946,7 @@ export function EmployeesPage() {
 
       {/* Delete confirmation modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => { setDeleteTarget(null); setDeleteError('') }} />
           <div className="relative z-10 w-full max-w-xs bg-[var(--color-surface)] rounded-2xl p-5 shadow-xl text-center">
             <span className="text-3xl">🗑️</span>

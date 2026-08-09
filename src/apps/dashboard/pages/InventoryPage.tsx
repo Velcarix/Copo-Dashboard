@@ -93,7 +93,7 @@ export function InventoryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Inventario</h1>
         <button
           type="button"
@@ -164,74 +164,76 @@ export function InventoryPage() {
       )}
 
       <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--color-border)]">
-              {['Insumo', 'Stock actual', 'Mínimo', 'Estado', 'Acciones'].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(item => (
-              <React.Fragment key={item.id}>
-                <tr className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
-                  <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">{item.name}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{item.currentStock} {item.unit}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-muted)]">{item.minStock} {item.unit}</td>
-                  <td className="px-4 py-3">
-                    <span className={[
-                      'px-2 py-0.5 rounded-full text-xs font-semibold',
-                      item.isLow ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700',
-                    ].join(' ')}>
-                      {item.isLow ? 'Stock bajo' : 'OK'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setAdjustId(adjustId === item.id ? null : item.id)}
-                      className="text-xs text-[var(--color-accent)] hover:underline"
-                    >
-                      Ajustar
-                    </button>
-                  </td>
-                </tr>
-                {adjustId === item.id && (
-                  <tr className="bg-[var(--color-bg)]">
-                    <td colSpan={5} className="px-4 py-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <input
-                          type="number"
-                          value={adjustQty}
-                          onChange={e => setAdjustQty(e.target.value)}
-                          placeholder="Cantidad (+/-)"
-                          className="w-32 px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
-                        />
-                        <input
-                          type="text"
-                          value={adjustReason}
-                          onChange={e => setAdjustReason(e.target.value)}
-                          placeholder="Motivo"
-                          className="flex-1 min-w-[140px] px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleAdjust(item)}
-                          disabled={!adjustQty || !adjustReason.trim()}
-                          className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-bold disabled:opacity-40"
-                        >
-                          Confirmar
-                        </button>
-                        {adjustError && <p className="text-xs text-[var(--color-danger)]">{adjustError}</p>}
-                      </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead>
+              <tr className="border-b border-[var(--color-border)]">
+                {['Insumo', 'Stock actual', 'Mínimo', 'Estado', 'Acciones'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => (
+                <React.Fragment key={item.id}>
+                  <tr className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
+                    <td className="px-4 py-3 font-medium text-[var(--color-text-primary)] whitespace-nowrap">{item.name}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">{item.currentStock} {item.unit}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)] whitespace-nowrap">{item.minStock} {item.unit}</td>
+                    <td className="px-4 py-3">
+                      <span className={[
+                        'px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap',
+                        item.isLow ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700',
+                      ].join(' ')}>
+                        {item.isLow ? 'Stock bajo' : 'OK'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setAdjustId(adjustId === item.id ? null : item.id)}
+                        className="text-xs text-[var(--color-accent)] hover:underline whitespace-nowrap"
+                      >
+                        Ajustar
+                      </button>
                     </td>
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+                  {adjustId === item.id && (
+                    <tr className="bg-[var(--color-bg)]">
+                      <td colSpan={5} className="px-4 py-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <input
+                            type="number"
+                            value={adjustQty}
+                            onChange={e => setAdjustQty(e.target.value)}
+                            placeholder="Cantidad (+/-)"
+                            className="w-32 px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+                          />
+                          <input
+                            type="text"
+                            value={adjustReason}
+                            onChange={e => setAdjustReason(e.target.value)}
+                            placeholder="Motivo"
+                            className="flex-1 min-w-[140px] px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAdjust(item)}
+                            disabled={!adjustQty || !adjustReason.trim()}
+                            className="px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-bold disabled:opacity-40"
+                          >
+                            Confirmar
+                          </button>
+                          {adjustError && <p className="text-xs text-[var(--color-danger)]">{adjustError}</p>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
