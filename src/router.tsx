@@ -19,7 +19,6 @@ import { SettingsPage } from '@/apps/dashboard/pages/SettingsPage'
 import { TablesPage } from '@/apps/dashboard/pages/TablesPage'
 import { ComanderoConfigPage } from '@/apps/dashboard/pages/ComanderoConfigPage'
 import { ShiftsPage } from '@/apps/dashboard/pages/ShiftsPage'
-import { InvoicesPage } from '@/apps/dashboard/pages/InvoicesPage'
 import { RolesPage } from '@/apps/dashboard/pages/RolesPage'
 import { KitchenDashboardPage } from '@/apps/dashboard/pages/KitchenDashboardPage'
 import { OrderHistoryPage } from '@/apps/dashboard/pages/OrderHistoryPage'
@@ -58,7 +57,6 @@ export const router = createHashRouter([
               { path: 'kitchen', element: <KitchenDashboardPage /> },
               { path: 'orders', element: <OrderHistoryPage /> },
               { path: 'shifts', element: <ShiftsPage /> },
-              { path: 'invoices', element: <InvoicesPage /> },
               { path: 'roles', element: <RolesPage /> },
             ],
           },

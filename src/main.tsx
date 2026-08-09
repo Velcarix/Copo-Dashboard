@@ -30,7 +30,6 @@ if (import.meta.env.DEV) {
       canManageInventory: true,
       canManageEmployees: true,
       canManageProducts: true,
-      canIssueInvoices: true,
       canSkipShiftOpen: true,
       canSkipShiftClose: true,
     },

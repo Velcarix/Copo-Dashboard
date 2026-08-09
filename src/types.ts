@@ -432,11 +432,6 @@ export enum DeliveryOrderStatus {
   REJECTED   = 'REJECTED',
 }
 
-export enum CfdiStatus {
-  ACTIVE    = 'ACTIVE',
-  CANCELLED = 'CANCELLED',
-}
-
 export interface TableConfig {
   id: string
   branchId: string
@@ -505,18 +500,8 @@ export interface ProfilePermissions {
   canManageInventory: boolean
   canManageEmployees: boolean
   canManageProducts: boolean
-  canIssueInvoices: boolean
   canSkipShiftOpen: boolean     // enter POS without opening a shift (requires admin PIN to enable)
   canSkipShiftClose: boolean    // leave POS without closing shift  (requires admin PIN to enable)
-}
-
-export interface CfdiCustomerData {
-  rfc: string
-  name: string
-  email?: string | null
-  domicilioFiscalReceptor: string
-  regimenFiscalReceptor: string
-  usoCfdi: string
 }
 
 export interface CreateOrderDto {

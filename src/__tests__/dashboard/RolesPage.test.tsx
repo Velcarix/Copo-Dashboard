@@ -45,7 +45,7 @@ describe('RolesPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Acceder al POS')).toBeInTheDocument()
       expect(screen.getByText('Aplicar descuentos')).toBeInTheDocument()
-      expect(screen.getByText('Emitir facturas CFDI')).toBeInTheDocument()
+      expect(screen.getByText('Gestionar productos')).toBeInTheDocument()
     })
   })
 

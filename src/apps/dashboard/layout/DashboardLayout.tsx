@@ -169,10 +169,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Icon d={['M12 2v4', 'M12 18v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M2 12h4', 'M18 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83']} />,
   },
   {
-    to: '/dashboard/invoices', label: 'Facturas',
-    icon: <Icon d={['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8']} />,
-  },
-  {
     to: '/dashboard/kitchen', label: 'Cocina',
     icon: <Icon d={['M12 2a7 7 0 0 1 7 7c0 3.87-3.13 7-7 7s-7-3.13-7-7a7 7 0 0 1 7-7z', 'M8 21h8', 'M12 19v2']} />,
   },

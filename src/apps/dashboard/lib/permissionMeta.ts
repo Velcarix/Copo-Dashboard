@@ -32,7 +32,6 @@ export const PERMISSIONS: PermMeta[] = [
   { key: 'canManageInventory',  label: 'Gestionar inventario',        group: 'Administración' },
   { key: 'canManageEmployees',  label: 'Gestionar empleados',         group: 'Administración' },
   { key: 'canManageProducts',   label: 'Gestionar productos',         group: 'Administración' },
-  { key: 'canIssueInvoices',    label: 'Emitir facturas CFDI',        group: 'Administración' },
 ]
 
 // Al desactivar una de estas llaves, sus permisos dependientes se desactivan también
@@ -72,7 +71,7 @@ export const MOCK_PROFILES: ProfilePermissions[] = [
     canApplyDiscounts: false,  canCancelOrders: false,
     canViewReports: false,     canManageInventory: false,
     canManageEmployees: false, canManageProducts: false,
-    canIssueInvoices: false,   canSkipShiftOpen: false,
+    canSkipShiftOpen: false,
     canSkipShiftClose: false,
   },
   {
@@ -84,7 +83,7 @@ export const MOCK_PROFILES: ProfilePermissions[] = [
     canApplyDiscounts: false,  canCancelOrders: false,
     canViewReports: false,     canManageInventory: false,
     canManageEmployees: false, canManageProducts: false,
-    canIssueInvoices: false,   canSkipShiftOpen: false,
+    canSkipShiftOpen: false,
     canSkipShiftClose: false,
   },
   {
@@ -96,7 +95,7 @@ export const MOCK_PROFILES: ProfilePermissions[] = [
     canApplyDiscounts: false,  canCancelOrders: false,
     canViewReports: false,     canManageInventory: false,
     canManageEmployees: false, canManageProducts: false,
-    canIssueInvoices: false,   canSkipShiftOpen: true,
+    canSkipShiftOpen: true,
     canSkipShiftClose: true,
   },
   {
@@ -108,7 +107,7 @@ export const MOCK_PROFILES: ProfilePermissions[] = [
     canApplyDiscounts: true,   canCancelOrders: true,
     canViewReports: true,      canManageInventory: true,
     canManageEmployees: true,  canManageProducts: true,
-    canIssueInvoices: true,    canSkipShiftOpen: false,
+    canSkipShiftOpen: false,
     canSkipShiftClose: false,
   },
 ]

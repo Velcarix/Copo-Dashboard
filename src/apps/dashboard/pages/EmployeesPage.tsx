@@ -216,7 +216,7 @@ function blankPermissions(role: EmployeeRole): ProfilePermissions {
     canApplyDiscounts: false, canCancelOrders: false,
     canViewReports: false, canManageInventory: false,
     canManageEmployees: false, canManageProducts: false,
-    canIssueInvoices: false, canSkipShiftOpen: false,
+    canSkipShiftOpen: false,
     canSkipShiftClose: false,
   }
 }
