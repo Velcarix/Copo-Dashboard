@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { CopoLogo } from '@/shared/components/CopoLogo'
 import { BranchSelector } from '@/shared/components/BranchSelector'
+import { LicenseStatusBanner } from '@/shared/components/LicenseStatusBanner'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api } from '@/shared/lib/api'
@@ -199,7 +200,9 @@ export function DashboardLayout() {
   useEffect(() => { setMoreOpen(false) }, [location.pathname])
 
   return (
-    <div className="flex h-dvh bg-[var(--color-bg)]">
+    <div className="flex flex-col h-dvh">
+      <LicenseStatusBanner />
+      <div className="flex flex-1 min-h-0 bg-[var(--color-bg)]">
       {/* ── Sidebar (desktop) ─── */}
       <aside className="hidden md:flex flex-col w-56 bg-[var(--color-surface)] border-r border-[var(--color-border)]">
         {/* Logo */}
@@ -368,6 +371,7 @@ export function DashboardLayout() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   )
