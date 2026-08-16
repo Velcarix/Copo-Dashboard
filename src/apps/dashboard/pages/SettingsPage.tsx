@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
-import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { useAuthStore } from '@/shared/store/authStore'
+import { REGIMEN_FISCAL_OPTIONS } from '@/shared/data/regimenFiscal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface BranchSettings {
-  name: string
-  address: string
-  phone: string
-  currency: string
-  timezone: string
+interface FiscalSettings {
+  rfc: string
+  taxRegime: string
+  billingNotice: string
 }
 
 interface KitchenSettings {
@@ -31,9 +29,8 @@ interface TablesSettings {
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-const MOCK_BRANCH: BranchSettings = {
-  name: 'Copo Helados', address: 'Calle Reforma 123, CDMX',
-  phone: '55 1234 5678', currency: 'MXN', timezone: 'America/Mexico_City',
+const MOCK_FISCAL: FiscalSettings = {
+  rfc: '', taxRegime: '', billingNotice: '',
 }
 
 const MOCK_KITCHEN: KitchenSettings = {
@@ -87,36 +84,36 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: {
   )
 }
 
-type Tab = 'general' | 'kitchen' | 'tables'
+type Tab = 'fiscal' | 'kitchen' | 'tables'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'general',  label: 'General',  icon: '🏪' },
-  { id: 'kitchen',  label: 'Cocina',   icon: '🍳' },
-  { id: 'tables',   label: 'Mesas',    icon: '🗺️' },
+  { id: 'fiscal',   label: 'Datos Fiscales', icon: '🧾' },
+  { id: 'kitchen',  label: 'Cocina',         icon: '🍳' },
+  { id: 'tables',   label: 'Mesas',          icon: '🗺️' },
 ]
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
   const branchId = useAuthStore(s => s.branchId)
-  const [tab, setTab] = useState<Tab>('general')
+  const [tab, setTab] = useState<Tab>('fiscal')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  const [branch, setBranch] = useState<BranchSettings>(MOCK_BRANCH)
+  const [fiscal, setFiscal] = useState<FiscalSettings>(MOCK_FISCAL)
   const [kitchen, setKitchen] = useState<KitchenSettings>(MOCK_KITCHEN)
   const [tables, setTables] = useState<TablesSettings>(MOCK_TABLES)
 
   useEffect(() => {
     if (!branchId) return
     const endpoints: Record<Tab, string> = {
-      general:  `/api/v1/settings?branchId=${branchId}`,
+      fiscal:   `/api/v1/settings/fiscal?branchId=${branchId}`,
       kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
       tables:   `/api/v1/settings/tables?branchId=${branchId}`,
     }
     const setters: Record<Tab, (d: unknown) => void> = {
-      general:  d => setBranch(d as BranchSettings),
+      fiscal:   d => setFiscal(d as FiscalSettings),
       kitchen:  d => setKitchen(d as KitchenSettings),
       tables:   d => setTables(d as TablesSettings),
     }
@@ -131,12 +128,12 @@ export function SettingsPage() {
     setSaved(false)
 
     const endpoints: Record<Tab, string> = {
-      general:  `/api/v1/settings?branchId=${branchId}`,
+      fiscal:   `/api/v1/settings/fiscal?branchId=${branchId}`,
       kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
       tables:   `/api/v1/settings/tables?branchId=${branchId}`,
     }
     const bodies: Record<Tab, unknown> = {
-      general: branch, kitchen, tables,
+      fiscal, kitchen, tables,
     }
 
     try {
@@ -178,16 +175,39 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {/* ── General ── */}
-      {tab === 'general' && (
+      {/* ── Datos Fiscales ── */}
+      {tab === 'fiscal' && (
         <div className="bg-[var(--color-surface)] rounded-2xl p-5 border border-[var(--color-border)] space-y-4">
-          <h2 className="font-semibold text-[var(--color-text-primary)] text-sm uppercase tracking-wide">Negocio</h2>
-          <Field label="Nombre del negocio" value={branch.name} onChange={v => setBranch(b => ({ ...b, name: v }))} />
-          <Field label="Dirección" value={branch.address} onChange={v => setBranch(b => ({ ...b, address: v }))} />
-          <Field label="Teléfono" value={branch.phone} type="tel" onChange={v => setBranch(b => ({ ...b, phone: v }))} />
-          <div className="flex items-center justify-between pt-2 border-t border-[var(--color-border)]">
-            <p className="text-sm text-[var(--color-text-secondary)]">Tema de la interfaz</p>
-            <ThemeToggle />
+          <h2 className="font-semibold text-[var(--color-text-primary)] text-sm uppercase tracking-wide">Datos fiscales</h2>
+          <Field
+            label="RFC"
+            value={fiscal.rfc}
+            placeholder="XAXX010101000"
+            onChange={v => setFiscal(f => ({ ...f, rfc: v.toUpperCase() }))}
+          />
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)] block mb-1">Régimen fiscal</label>
+            <select
+              value={fiscal.taxRegime}
+              onChange={e => setFiscal(f => ({ ...f, taxRegime: e.target.value }))}
+              className="w-full text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+            >
+              <option value="">Sin especificar</option>
+              {REGIMEN_FISCAL_OPTIONS.map(o => (
+                <option key={o.code} value={o.code}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)] block mb-1">Datos de facturación</label>
+            <textarea
+              value={fiscal.billingNotice}
+              onChange={e => setFiscal(f => ({ ...f, billingNotice: e.target.value }))}
+              placeholder="Ej. Factura se solicita al número 33 1121 2000"
+              rows={3}
+              maxLength={200}
+              className="w-full text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] resize-none"
+            />
           </div>
         </div>
       )}

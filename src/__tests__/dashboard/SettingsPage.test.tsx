@@ -19,7 +19,7 @@ describe('SettingsPage', () => {
   it('renders all tabs', async () => {
     render(<MemoryRouter><SettingsPage /></MemoryRouter>)
     await waitFor(() => {
-      expect(screen.getByText('General')).toBeInTheDocument()
+      expect(screen.getByText('Datos Fiscales')).toBeInTheDocument()
       expect(screen.getByText('Cocina')).toBeInTheDocument()
       expect(screen.getByText('Mesas')).toBeInTheDocument()
     })
@@ -30,5 +30,15 @@ describe('SettingsPage', () => {
     await waitFor(() => screen.getByText('Cocina'))
     fireEvent.click(screen.getByText('Cocina'))
     await waitFor(() => expect(screen.getByText('Pantalla de cocina')).toBeInTheDocument())
+  })
+
+  it('renders fiscal fields and not the old Negocio fields', async () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('RFC')).toBeInTheDocument())
+    expect(screen.getByText('Régimen fiscal')).toBeInTheDocument()
+    expect(screen.getByText('Datos de facturación')).toBeInTheDocument()
+    expect(screen.queryByText('Nombre del negocio')).not.toBeInTheDocument()
+    expect(screen.queryByText('Dirección')).not.toBeInTheDocument()
+    expect(screen.queryByText('Tema de la interfaz')).not.toBeInTheDocument()
   })
 })
