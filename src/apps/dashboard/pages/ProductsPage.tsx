@@ -3,10 +3,10 @@ import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
-import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
+import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant, ComboSlot } from '@shared-types'
 import { useCategoryStore, useSortedCategories, type CategoryMeta } from '@/shared/store/categoryStore'
 import { useFlavorStore, useSortedFlavors } from '@/shared/store/flavorStore'
-import { CreateComboModal } from './CreateComboModal'
+import { CreateComboModal, type ComboToEdit } from './CreateComboModal'
 
 const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.SELECT]:  'Selección (elige uno)',
@@ -1506,7 +1506,8 @@ export function ProductsPage() {
   const [filterCat, setFilterCat] = useState<string>('ALL')
 
   // Category management panel
-  const [showComboModal, setShowComboModal] = useState(false)
+  const [comboModal, setComboModal] = useState<'new' | ComboToEdit | null>(null)
+  const [comboLoadError, setComboLoadError] = useState('')
   const [showCatPanel, setShowCatPanel] = useState(false)
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
@@ -1557,6 +1558,23 @@ export function ProductsPage() {
     await api.delete(`/api/v1/products/${p.id}`)
     setProducts(prev => prev.filter(x => x.id !== p.id))
     setConfirmDeleteProductId(null)
+  }
+
+  // Los combos ya no se editan con el ProductModal genérico (no entiende slots) —
+  // se cargan con sus comboSlots y se abren en CreateComboModal (doc 04 §6).
+  async function openEdit(p: Product) {
+    if (p.category !== ProductCategory.COMBO) {
+      setModal(p)
+      return
+    }
+    setComboLoadError('')
+    try {
+      const res = await api.get<{ data: ComboToEdit & { comboSlots?: ComboSlot[] } }>(`/api/v1/products/${p.id}`)
+      setComboModal({ ...res.data, comboSlots: res.data.comboSlots ?? [] })
+    } catch {
+      setComboLoadError('No se pudo cargar el combo — revisa tu conexión')
+      setModal(p)
+    }
   }
 
   function handleDuplicate(p: Product) {
@@ -1613,7 +1631,7 @@ export function ProductsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setShowComboModal(true)}
+            onClick={() => setComboModal('new')}
             className="px-4 py-2 rounded-xl border border-[var(--color-accent)] text-[var(--color-accent)] text-sm font-bold hover:bg-[var(--color-accent)] hover:text-white transition-colors"
           >
             🎁 Crear combo
@@ -1858,7 +1876,7 @@ export function ProductsPage() {
                     <button type="button" onClick={() => handleDuplicate(p)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline">
                       Duplicar
                     </button>
-                    <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
+                    <button type="button" onClick={() => openEdit(p)} className="text-xs text-[var(--color-accent)] hover:underline">
                       Editar
                     </button>
                     {confirmDeleteProductId === p.id ? (
@@ -1899,19 +1917,26 @@ export function ProductsPage() {
         />
       )}
 
-      {showComboModal && (
+      {comboModal && (
         <CreateComboModal
           products={products}
           branchId={branchId ?? ''}
-          onClose={() => setShowComboModal(false)}
+          combo={comboModal === 'new' ? undefined : comboModal}
+          onClose={() => setComboModal(null)}
           onCreated={() => {
-            setShowComboModal(false)
+            setComboModal(null)
             if (!branchId) return
             api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
               .then(res => setProducts(res.data))
               .catch(() => {})
           }}
         />
+      )}
+
+      {comboLoadError && (
+        <p className="fixed bottom-4 right-4 z-50 bg-[var(--color-danger)] text-white text-xs px-3 py-2 rounded-lg shadow-lg">
+          {comboLoadError}
+        </p>
       )}
     </div>
   )
