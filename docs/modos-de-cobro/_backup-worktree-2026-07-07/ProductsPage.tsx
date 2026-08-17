@@ -4,7 +4,7 @@ import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
-import { useCategoryStore, useSortedCategories, type CategoryMeta } from '@/shared/store/categoryStore'
+import { useCategoryStore, useSortedCategories } from '@/shared/store/categoryStore'
 import { useFlavorStore, useSortedFlavors } from '@/shared/store/flavorStore'
 import { CreateComboModal } from './CreateComboModal'
 
@@ -78,6 +78,12 @@ interface Product {
   variants?: ProductVariant[]  // solo si la categoría es VARIANTS
   maxFlavors?: number          // solo si la categoría es PRESENTATION
 }
+
+const PRICING_MODE_OPTIONS: { value: PricingMode; label: string; example: string }[] = [
+  { value: PricingMode.FIXED, label: 'Precio único', example: 'Cada producto tiene su precio' },
+  { value: PricingMode.VARIANTS, label: 'Por tamaño', example: 'Cada producto tiene precios por tamaño' },
+  { value: PricingMode.PRESENTATION, label: 'Por presentación', example: 'El precio depende de la presentación, no del sabor' },
+]
 
 function pricingModeShortLabel(mode: PricingMode): string {
   return mode === PricingMode.VARIANTS ? 'Variantes' : mode === PricingMode.PRESENTATION ? 'Presentación' : 'Fijo'
@@ -259,119 +265,6 @@ function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; 
         />
         <button type="button" onClick={() => handleAdd()} className="px-2 py-1 text-xs rounded-lg bg-[var(--color-accent)] text-white font-semibold">+ Agregar sabor</button>
       </div>
-    </div>
-  )
-}
-
-// ── Panel "Modos de cobro" — agrupa categorías por su forma de cobro; vive aparte
-// de "Categorías" porque mezclar ambas cosas resultaba confuso (ver feedback de
-// producto: era muy rebuscado encontrar dónde cambiar el modo de una categoría) ──
-
-const PRICING_MODE_INFO: Record<PricingMode, { label: string; description: string }> = {
-  [PricingMode.FIXED]: {
-    label: 'Precio único',
-    description: 'Úsalo cuando cada producto de la categoría tiene un solo precio fijo. Es el modo por defecto — la mayoría de las categorías van aquí.',
-  },
-  [PricingMode.VARIANTS]: {
-    label: 'Por tamaño',
-    description: 'Úsalo cuando el precio cambia según el tamaño (ej. Chico, Mediano, Grande) y ese esquema es el mismo para todos los productos de la categoría.',
-  },
-  [PricingMode.PRESENTATION]: {
-    label: 'Por presentación',
-    description: 'Úsalo cuando el precio depende de la presentación o envase (ej. cono, vaso, litro), no del sabor — el sabor elegido no cambia el precio.',
-  },
-}
-
-const PRICING_MODE_ORDER: PricingMode[] = [PricingMode.FIXED, PricingMode.VARIANTS, PricingMode.PRESENTATION]
-
-function PricingModesPanel({
-  categories,
-  products,
-  updateCat,
-  catError,
-}: {
-  categories: CategoryMeta[]
-  products: Product[]
-  updateCat: (key: string, patch: Partial<Pick<CategoryMeta, 'label' | 'emoji' | 'color' | 'hidden' | 'pricingMode' | 'variantScheme'>>) => Promise<void>
-  catError: string | null
-}) {
-  return (
-    <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4 space-y-4">
-      <div>
-        <p className="text-sm font-semibold text-[var(--color-text-primary)]">Modos de cobro</p>
-        <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-          Aquí decides cómo se cobra cada categoría y qué categorías usan cada modo.
-        </p>
-      </div>
-
-      {catError && (
-        <p className="text-xs text-[var(--color-danger)] bg-[var(--color-danger)]/10 rounded-lg px-2 py-1.5">
-          {catError} — el cambio no se guardó, intenta de nuevo.
-        </p>
-      )}
-
-      {PRICING_MODE_ORDER.map(mode => {
-        const info = PRICING_MODE_INFO[mode]
-        const inMode = categories.filter(c => c.pricingMode === mode)
-        const notInMode = categories.filter(c => c.pricingMode !== mode)
-
-        return (
-          <div key={mode} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 space-y-2.5">
-            <div>
-              <p className="text-sm font-bold text-[var(--color-text-primary)]">{info.label}</p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{info.description}</p>
-            </div>
-
-            <div className="space-y-2">
-              {inMode.length === 0 && (
-                <p className="text-xs italic text-[var(--color-text-muted)]">Ninguna categoría usa este modo todavía.</p>
-              )}
-              {inMode.map(cat => (
-                <div key={cat.key} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2.5 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-[var(--color-text-primary)]">{cat.emoji} {cat.label}</span>
-                    {mode !== PricingMode.FIXED && (
-                      <button
-                        type="button"
-                        onClick={() => updateCat(cat.key, { pricingMode: PricingMode.FIXED })}
-                        className="text-xs px-2 py-1 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] transition-colors shrink-0"
-                      >
-                        Quitar
-                      </button>
-                    )}
-                  </div>
-                  {mode === PricingMode.VARIANTS && (
-                    <VariantSchemeEditor
-                      scheme={cat.variantScheme ?? []}
-                      onChange={scheme => updateCat(cat.key, { variantScheme: scheme })}
-                    />
-                  )}
-                  {mode === PricingMode.PRESENTATION && (
-                    <FlavorManager
-                      categoryId={cat.id}
-                      zeroPriceProducts={products.filter(p => p.category === cat.key && p.basePrice === 0)}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {notInMode.length > 0 && (
-              <select
-                value=""
-                onChange={e => { if (e.target.value) updateCat(e.target.value, { pricingMode: mode }) }}
-                aria-label={`Asignar categoría a ${info.label}`}
-                className="text-xs px-2.5 py-1.5 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]"
-              >
-                <option value="">+ Asignar categoría a este modo…</option>
-                {notInMode.map(c => (
-                  <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -703,13 +596,13 @@ function OptionRow({
 
   return (
     <div className="pl-4 space-y-1">
-      <div className="flex gap-2 items-center flex-wrap">
+      <div className="flex gap-2 items-center">
         <input
           type="text"
           value={option.name}
           onChange={e => onChange({ ...option, name: e.target.value })}
           placeholder="Nombre (ej. Grande)"
-          className="flex-1 min-w-[120px] px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
+          className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
         />
         <div className="flex items-center gap-1">
           <span className="text-xs text-[var(--color-text-muted)]">+$</span>
@@ -1150,7 +1043,7 @@ function ProductModal({
     if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
     const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
     if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
-    if (categoryPricingMode === PricingMode.FIXED && form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
+    if (form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
       setShowZeroPriceModal(true)
       return
     }
@@ -1176,14 +1069,14 @@ function ProductModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-[var(--color-border)] px-5 overflow-x-auto">
+        <div className="flex border-b border-[var(--color-border)] px-5">
           {TABS.map(t => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
               className={[
-                'py-2.5 px-3 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0',
+                'py-2.5 px-3 text-sm font-medium border-b-2 -mb-px transition-colors',
                 tab === t.id
                   ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
                   : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
@@ -1195,7 +1088,7 @@ function ProductModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 min-h-[420px]">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-[420px]">
 
           {/* ── GENERAL ───────────────────────────────────── */}
           {tab === 'basic' && (
@@ -1246,7 +1139,7 @@ function ProductModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide block mb-1">Categoría *</label>
                   {showCustomCat ? (
@@ -1350,7 +1243,7 @@ function ProductModal({
                   </div>
                   {(form.variants ?? []).length === 0 && (
                     <p className="text-xs text-[var(--color-danger)] mt-1">
-                      Esta categoría no tiene esquema de variantes — configúralo en "Modos de cobro".
+                      Esta categoría no tiene esquema de variantes — configúralo en "Categorías".
                     </p>
                   )}
                 </div>
@@ -1367,7 +1260,7 @@ function ProductModal({
                     min="1"
                     className="w-24 px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                   />
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Los sabores se administran en "Modos de cobro".</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">Los sabores se administran en la categoría.</p>
                 </div>
               )}
 
@@ -1499,422 +1392,4 @@ const MOCK_PRODUCTS: Product[] = [
 
 export function ProductsPage() {
   const branchId = useAuthStore(s => s.branchId)
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true }) | null>(null)
-  const [search, setSearch] = useState('')
-  const [filterCat, setFilterCat] = useState<string>('ALL')
-
-  // Category management panel
-  const [showComboModal, setShowComboModal] = useState(false)
-  const [showCatPanel, setShowCatPanel] = useState(false)
-  const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
-  const [newCatError, setNewCatError] = useState('')
-  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null)
-  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null)
-  const [showPricingPanel, setShowPricingPanel] = useState(false)
-  const { update: updateCat, add: addCat, remove: removeCat, move: moveCat, reset: resetCats, load: loadCats } = useCategoryStore()
-  const allCats = useSortedCategories(true)
-  const catError = useCategoryStore(s => s.error)
-
-  async function handleAddCategory() {
-    if (!newCat.label.trim()) { setNewCatError('El nombre es obligatorio'); return }
-    const key = `custom_${Date.now()}`
-    const ok = await addCat({ key, label: newCat.label.trim(), emoji: newCat.emoji || '🏷️', color: newCat.color, hidden: false })
-    if (!ok) { setNewCatError(useCategoryStore.getState().error ?? 'No se pudo guardar la categoría'); return }
-    setNewCat({ label: '', emoji: '⭐', color: '#6366f1' })
-    setNewCatError('')
-  }
-
-  useEffect(() => {
-    if (!branchId) return
-    api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
-      .then(res => setProducts(res.data))
-      .catch(() => { if (import.meta.env.DEV) setProducts(MOCK_PRODUCTS) })
-      .finally(() => setLoading(false))
-  }, [branchId])
-
-  useEffect(() => {
-    if (branchId && useCategoryStore.getState().branchId !== branchId) loadCats(branchId)
-  }, [branchId, loadCats])
-
-  async function handleSave(data: Omit<Product, 'id'> & { id?: string }) {
-    if (data.id) {
-      const res = await api.put<{ data: Product }>(`/api/v1/products/${data.id}`, data)
-      setProducts(prev => prev.map(p => p.id === data.id ? res.data : p))
-    } else {
-      const res = await api.post<{ data: Product }>('/api/v1/products', { ...data, branchId: branchId ?? '' })
-      setProducts(prev => [...prev, res.data])
-    }
-  }
-
-  async function handleToggle(p: Product) {
-    try { await api.put(`/api/v1/products/${p.id}`, { active: !p.active }) } catch { /* optimistic */ }
-    setProducts(prev => prev.map(x => x.id === p.id ? { ...x, active: !x.active } : x))
-  }
-
-  async function handleDelete(p: Product) {
-    await api.delete(`/api/v1/products/${p.id}`)
-    setProducts(prev => prev.filter(x => x.id !== p.id))
-    setConfirmDeleteProductId(null)
-  }
-
-  function handleDuplicate(p: Product) {
-    setModal({
-      _duplicate: true,
-      name: `${p.name} (copia)`,
-      description: p.description,
-      category: p.category,
-      basePrice: p.basePrice,
-      active: p.active,
-      imageUrl: null,
-      ingredients: p.ingredients.map(ing => ({ ...ing, id: uid() })),
-      modifierGroups: p.modifierGroups.map(mg => ({ ...mg, id: uid(), productId: 'new' })),
-    })
-  }
-
-  const filtered = products.filter(p => {
-    const matchCat = filterCat === 'ALL' || p.category === filterCat
-    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase())
-    return matchCat && matchSearch
-  })
-
-  if (loading) return <div className="flex items-center justify-center h-40 text-[var(--color-text-muted)] text-sm">Cargando…</div>
-
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Productos</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => { setShowCatPanel(v => !v); setNewCatError('') }}
-            className={[
-              'px-3 py-2 rounded-xl border text-sm font-semibold transition-colors',
-              showCatPanel
-                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
-            ].join(' ')}
-          >
-            Categorías
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowPricingPanel(v => !v)}
-            className={[
-              'px-3 py-2 rounded-xl border text-sm font-semibold transition-colors',
-              showPricingPanel
-                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]',
-            ].join(' ')}
-          >
-            Modos de cobro
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowComboModal(true)}
-            className="px-4 py-2 rounded-xl border border-[var(--color-accent)] text-[var(--color-accent)] text-sm font-bold hover:bg-[var(--color-accent)] hover:text-white transition-colors"
-          >
-            🎁 Crear combo
-          </button>
-          <button
-            type="button"
-            onClick={() => setModal('new')}
-            className="px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold hover:opacity-90 transition-opacity"
-          >
-            + Nuevo producto
-          </button>
-        </div>
-      </div>
-
-      {/* Pricing modes panel — separado de Categorías, ver PricingModesPanel arriba */}
-      {showPricingPanel && (
-        <PricingModesPanel
-          categories={allCats}
-          products={products}
-          updateCat={updateCat}
-          catError={catError}
-        />
-      )}
-
-      {/* Category management panel */}
-      {showCatPanel && (
-        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Gestionar categorías</p>
-            <button
-              type="button"
-              onClick={resetCats}
-              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors"
-            >
-              Restablecer
-            </button>
-          </div>
-
-          {catError && (
-            <p className="text-xs text-[var(--color-danger)] bg-[var(--color-danger)]/10 rounded-lg px-2 py-1.5">
-              {catError} — el cambio no se guardó, intenta de nuevo.
-            </p>
-          )}
-
-          <div className="space-y-1.5">
-            {allCats.map((cat, idx) => {
-              return (
-                <div key={cat.key} className="space-y-1">
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
-                  <input
-                    type="text"
-                    value={cat.emoji}
-                    onChange={e => updateCat(cat.key, { emoji: e.target.value })}
-                    className="w-9 text-center text-lg bg-transparent border-none outline-none"
-                    maxLength={2}
-                  />
-                  <input
-                    type="text"
-                    value={cat.label}
-                    onChange={e => updateCat(cat.key, { label: e.target.value })}
-                    className="flex-1 min-w-0 text-sm px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus:outline-none focus:border-[var(--color-accent)]"
-                  />
-                  <input
-                    type="color"
-                    value={cat.color}
-                    onChange={e => updateCat(cat.key, { color: e.target.value })}
-                    title="Color"
-                    className="w-7 h-7 rounded-lg cursor-pointer border border-[var(--color-border)] p-0.5 bg-transparent"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { setShowCatPanel(false); setShowPricingPanel(true) }}
-                    className="text-[0.65rem] px-2 py-1 rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors whitespace-nowrap shrink-0"
-                    title="Configurar en Modos de cobro"
-                  >
-                    {pricingModeShortLabel(cat.pricingMode)} →
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateCat(cat.key, { hidden: !cat.hidden })}
-                    className={[
-                      'text-xs px-2 py-1 rounded-lg border transition-colors shrink-0',
-                      cat.hidden
-                        ? 'border-[var(--color-border)] text-[var(--color-text-muted)]'
-                        : 'border-[var(--color-accent)] text-[var(--color-accent)]',
-                    ].join(' ')}
-                  >
-                    {cat.hidden ? 'Oculta' : 'Visible'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveCat(cat.key, 'up')}
-                    disabled={idx === 0}
-                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
-                  >↑</button>
-                  <button
-                    type="button"
-                    onClick={() => moveCat(cat.key, 'down')}
-                    disabled={idx === allCats.length - 1}
-                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30 transition-opacity"
-                  >↓</button>
-                  {confirmDeleteKey === cat.key ? (
-                    <div className="flex items-center gap-1 ml-1">
-                      <button
-                        type="button"
-                        onClick={() => { removeCat(cat.key); setConfirmDeleteKey(null) }}
-                        className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
-                      >¿Eliminar?</button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteKey(null)}
-                        className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
-                      >✕</button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeleteKey(cat.key)}
-                      className="text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors text-xs ml-1"
-                      title="Eliminar categoría"
-                    >✕</button>
-                  )}
-                </div>
-
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Add new category */}
-          <div className="border-t border-[var(--color-border)] pt-3 space-y-2">
-            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Nueva categoría</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <input
-                type="text"
-                value={newCat.emoji}
-                onChange={e => setNewCat(p => ({ ...p, emoji: e.target.value }))}
-                placeholder="⭐"
-                maxLength={2}
-                className="w-10 text-center text-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)] py-1"
-              />
-              <input
-                type="text"
-                value={newCat.label}
-                onChange={e => setNewCat(p => ({ ...p, label: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
-                placeholder="Nombre de categoría"
-                className="flex-1 min-w-[160px] text-sm px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)]"
-              />
-              <input
-                type="color"
-                value={newCat.color}
-                onChange={e => setNewCat(p => ({ ...p, color: e.target.value }))}
-                className="w-8 h-8 rounded-lg cursor-pointer border border-[var(--color-border)] p-0.5 bg-transparent"
-              />
-              <button
-                type="button"
-                onClick={handleAddCategory}
-                className="px-3 py-1.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-bold hover:opacity-90 transition-opacity"
-              >
-                + Agregar
-              </button>
-            </div>
-            {newCatError && <p className="text-xs text-[var(--color-danger)]">{newCatError}</p>}
-          </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap">
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar producto..."
-          className="px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
-        />
-        <select
-          value={filterCat}
-          onChange={e => setFilterCat(e.target.value)}
-          className="px-3 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
-        >
-          <option value="ALL">Todas las categorías</option>
-          {allCats.map(cat => (
-            <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Table */}
-      <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
-            <thead>
-              <tr className="border-b border-[var(--color-border)]">
-                {['Nombre', 'Categoría', 'Precio base', 'Opciones', 'Estado', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-[var(--color-text-muted)] text-sm">
-                    Sin productos{search ? ` para "${search}"` : ''}
-                  </td>
-                </tr>
-              )}
-              {filtered.map(p => (
-                <tr key={p.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg)] transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <ProductThumb name={p.name} category={p.category} imageUrl={p.imageUrl} size={36} />
-                      <span className="font-medium text-[var(--color-text-primary)] whitespace-nowrap">{p.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">{resolveCategoryLabel(p.category, allCats)}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">
-                    {allCats.find(c => c.key === p.category)?.pricingMode === PricingMode.VARIANTS
-                      ? ((p.variants ?? []).some(v => v.active && v.price > 0)
-                          ? `desde ${formatCurrency(Math.min(...(p.variants ?? []).filter(v => v.active && v.price > 0).map(v => v.price)))}`
-                          : <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Incompleto</span>)
-                      : formatCurrency(p.basePrice)
-                    }
-                  </td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)] whitespace-nowrap">
-                    {(p.modifierGroups ?? []).length > 0
-                      ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{(p.modifierGroups ?? []).length} grupo{(p.modifierGroups ?? []).length > 1 ? 's' : ''}</span>
-                      : <span className="text-xs text-[var(--color-text-muted)]">—</span>
-                    }
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(p)}
-                      className={['px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap', p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'].join(' ')}
-                    >
-                      {p.active ? 'Activo' : 'Inactivo'}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3 whitespace-nowrap">
-                      <button type="button" onClick={() => handleDuplicate(p)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline">
-                        Duplicar
-                      </button>
-                      <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
-                        Editar
-                      </button>
-                      {confirmDeleteProductId === p.id ? (
-                        <span className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(p)}
-                            className="text-[0.65rem] px-1.5 py-0.5 rounded bg-[var(--color-danger)] text-white font-semibold whitespace-nowrap"
-                          >¿Eliminar?</button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteProductId(null)}
-                            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs px-1"
-                          >✕</button>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteProductId(p.id)}
-                          className="text-xs text-[var(--color-danger)] hover:underline"
-                        >
-                          Eliminar
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {modal !== null && (
-        <ProductModal
-          product={modal}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
-
-      {showComboModal && (
-        <CreateComboModal
-          products={products}
-          branchId={branchId ?? ''}
-          onClose={() => setShowComboModal(false)}
-          onCreated={() => {
-            setShowComboModal(false)
-            if (!branchId) return
-            api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
-              .then(res => setProducts(res.data))
-              .catch(() => {})
-          }}
-        />
-      )}
-    </div>
-  )
-}
+  const [products, setProducts] = useState<Product[]

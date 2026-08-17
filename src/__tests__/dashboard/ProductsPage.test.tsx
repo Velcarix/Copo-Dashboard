@@ -57,14 +57,28 @@ describe('ProductsPage', () => {
       error: null,
     })
     render(<MemoryRouter><ProductsPage /></MemoryRouter>)
-    await userEvent.click(await screen.findByRole('button', { name: 'Categorías' }))
-    await userEvent.click(screen.getByTitle('¿Cómo se cobra esta categoría?'))
-    await userEvent.click(screen.getByRole('button', { name: 'Por tamaño' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Modos de cobro' }))
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Asignar categoría a Por tamaño' }), 'helados')
     expect(await screen.findByText('Esquema de variantes (ej. Chico, Mediano, Grande)')).toBeInTheDocument()
 
     await userEvent.type(screen.getByPlaceholderText('Nombre de variante'), 'Grande')
     await userEvent.click(screen.getByRole('button', { name: '+ Agregar variante' }))
     expect(await screen.findByText('Grande')).toBeInTheDocument()
+  })
+
+  it('lets the owner deselect a pricing mode back to Precio único', async () => {
+    useCategoryStore.setState({
+      categories: [{ id: 'c1', key: 'helados', label: 'Helados', emoji: '🍦', color: '#6366f1', sortOrder: 0, hidden: false, pricingMode: PricingMode.VARIANTS, variantScheme: ['Chico'] }],
+      loaded: true,
+      branchId: 'b1',
+      error: null,
+    })
+    render(<MemoryRouter><ProductsPage /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Modos de cobro' }))
+    expect(await screen.findByText('Esquema de variantes (ej. Chico, Mediano, Grande)')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar' }))
+    await waitFor(() => expect(useCategoryStore.getState().categories[0].pricingMode).toBe(PricingMode.FIXED))
   })
 
   it('shows the flavor catalog manager for a PRESENTATION category', async () => {
@@ -75,8 +89,7 @@ describe('ProductsPage', () => {
       error: null,
     })
     render(<MemoryRouter><ProductsPage /></MemoryRouter>)
-    await userEvent.click(await screen.findByRole('button', { name: 'Categorías' }))
-    await userEvent.click(screen.getByTitle('¿Cómo se cobra esta categoría?'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Modos de cobro' }))
     expect(await screen.findByText('Sabores de esta categoría')).toBeInTheDocument()
   })
 })
