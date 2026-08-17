@@ -92,4 +92,22 @@ describe('ProductsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Modos de cobro' }))
     expect(await screen.findByText('Sabores de esta categoría')).toBeInTheDocument()
   })
+
+  // Regresión: con 2+ categorías PRESENTATION montadas a la vez, cada FlavorManager
+  // peleaba por el mismo categoryId global en el store y entraban en loop infinito
+  // de renders (la página se quedaba sin responder). Ver flavorStore.ts.
+  it('shows the flavor catalog manager for multiple PRESENTATION categories at once without hanging', async () => {
+    useCategoryStore.setState({
+      categories: [
+        { id: 'c1', key: 'helados', label: 'Helados', emoji: '🍦', color: '#6366f1', sortOrder: 0, hidden: false, pricingMode: PricingMode.PRESENTATION },
+        { id: 'c2', key: 'malteadas', label: 'Malteadas', emoji: '🥤', color: '#6366f1', sortOrder: 1, hidden: false, pricingMode: PricingMode.PRESENTATION },
+      ],
+      loaded: true,
+      branchId: 'b1',
+      error: null,
+    })
+    render(<MemoryRouter><ProductsPage /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Modos de cobro' }))
+    expect((await screen.findAllByText('Sabores de esta categoría')).length).toBe(2)
+  })
 })
