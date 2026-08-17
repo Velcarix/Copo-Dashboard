@@ -357,6 +357,41 @@ export interface CategoryFlavor {
   sortOrder: number
 }
 
+// ─── COMBOS CONFIGURABLES (combos v2) — ver docs/combos-configurables/ ────────
+
+/** De dónde salen las opciones elegibles de un slot de combo. */
+export enum ComboSlotSource {
+  CATEGORY = 'CATEGORY',                   // cualquier producto activo de una categoría
+  SPECIFIC_PRODUCTS = 'SPECIFIC_PRODUCTS', // lista curada de productos elegibles
+}
+
+/** Opción concreta de un slot — producto elegible (FIXED, VARIANTS o PRESENTATION). */
+export interface ComboSlotOption {
+  productId: string
+  priceDelta: number       // centavos — sobreprecio opcional por elegir esta opción (RN-C02)
+  name?: string             // denormalizado por el backend para display (dashboard/POS)
+  pricingMode?: PricingMode // denormalizado — qué le pedirá el POS al cajero por esta opción
+  maxFlavors?: number       // denormalizado — solo si pricingMode === PRESENTATION
+}
+
+/** Una "ranura" del combo: qué debe elegir el cajero y de dónde salen las opciones. */
+export interface ComboSlot {
+  id?: string          // ausente en un slot recién armado en el editor, presente si viene del backend
+  name: string          // visible al cajero: "Elige tu helado"
+  quantity: number       // cuántas unidades hay que elegir en este slot
+  source: ComboSlotSource
+  categoryId?: string    // requerido si source === CATEGORY
+  options: ComboSlotOption[] // requerido (>=1) si source === SPECIFIC_PRODUCTS
+}
+
+/** Payload de creación/edición de combo — POST/PUT /api/v1/products/combo. */
+export interface CreateComboDto {
+  branchId: string
+  name: string
+  basePrice: number  // centavos, > 0 (RN-C10)
+  slots: ComboSlot[]
+}
+
 // ─── CART TYPES ───────────────────────────────────────────────────────────────
 
 export interface CartItemModifier {

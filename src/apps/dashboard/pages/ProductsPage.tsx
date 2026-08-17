@@ -3,10 +3,10 @@ import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
 import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
-import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant } from '@shared-types'
+import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant, ComboSlot } from '@shared-types'
 import { useCategoryStore, useSortedCategories, type CategoryMeta } from '@/shared/store/categoryStore'
 import { useFlavorStore, useSortedFlavors } from '@/shared/store/flavorStore'
-import { CreateComboModal } from './CreateComboModal'
+import { CreateComboModal, type ComboToEdit } from './CreateComboModal'
 
 const MODIFIER_TYPE_LABELS: Record<ModifierInputType, string> = {
   [ModifierInputType.SELECT]:  'Selección (elige uno)',
@@ -151,22 +151,21 @@ function VariantSchemeEditor({ scheme, onChange }: { scheme: string[]; onChange:
 // ── Catálogo de sabores para categorías PRESENTATION ──────────────────────────
 
 function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; zeroPriceProducts: Product[] }) {
-  const flavors = useSortedFlavors()
-  const loaded = useFlavorStore(s => s.loaded)
-  const flavorError = useFlavorStore(s => s.error)
-  const storeCategoryId = useFlavorStore(s => s.categoryId)
+  const flavors = useSortedFlavors(categoryId)
+  const loaded = useFlavorStore(s => s.byCategory[categoryId]?.loaded ?? false)
+  const flavorError = useFlavorStore(s => s.byCategory[categoryId]?.error ?? null)
   const { load, add, update, remove, toggleSoldOut } = useFlavorStore()
   const [input, setInput] = useState('')
   const [showImport, setShowImport] = useState(false)
 
   useEffect(() => {
-    if (storeCategoryId !== categoryId) load(categoryId)
-  }, [categoryId, storeCategoryId, load])
+    load(categoryId)
+  }, [categoryId, load])
 
   async function handleAdd(name?: string) {
     const value = (name ?? input).trim()
     if (!value) return
-    const ok = await add({ name: value })
+    const ok = await add(categoryId, { name: value })
     if (ok) setInput('')
   }
 
@@ -174,11 +173,11 @@ function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; 
     const idx = flavors.findIndex(f => f.id === id)
     const target = direction === 'up' ? idx - 1 : idx + 1
     if (idx < 0 || target < 0 || target >= flavors.length) return
-    update(flavors[idx].id, { sortOrder: flavors[target].sortOrder })
-    update(flavors[target].id, { sortOrder: flavors[idx].sortOrder })
+    update(categoryId, flavors[idx].id, { sortOrder: flavors[target].sortOrder })
+    update(categoryId, flavors[target].id, { sortOrder: flavors[idx].sortOrder })
   }
 
-  if (storeCategoryId !== categoryId || !loaded) {
+  if (!loaded) {
     return <p className="text-xs text-[var(--color-text-muted)]">Cargando sabores…</p>
   }
 
@@ -218,14 +217,14 @@ function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; 
             <input
               type="text"
               value={f.name}
-              onChange={e => update(f.id, { name: e.target.value })}
+              onChange={e => update(categoryId, f.id, { name: e.target.value })}
               className="flex-1 min-w-0 text-xs px-1.5 py-1 rounded border border-transparent bg-transparent focus:outline-none focus:border-[var(--color-border)]"
             />
             <span className="text-xs text-[var(--color-text-muted)]">+$</span>
             <input
               type="number"
               value={f.priceDelta / 100}
-              onChange={e => update(f.id, { priceDelta: Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100) })}
+              onChange={e => update(categoryId, f.id, { priceDelta: Math.round(Math.max(0, parseFloat(e.target.value || '0')) * 100) })}
               onFocus={e => e.target.select()}
               min="0"
               step="0.50"
@@ -233,7 +232,7 @@ function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; 
             />
             <button
               type="button"
-              onClick={() => toggleSoldOut(f.id)}
+              onClick={() => toggleSoldOut(categoryId, f.id)}
               className={[
                 'text-[0.65rem] px-2 py-1 rounded-lg border transition-colors shrink-0 whitespace-nowrap',
                 f.soldOut ? 'border-[var(--color-danger)] text-[var(--color-danger)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]',
@@ -243,7 +242,7 @@ function FlavorManager({ categoryId, zeroPriceProducts }: { categoryId: string; 
             </button>
             <button type="button" onClick={() => move(f.id, 'up')} disabled={i === 0} className="text-[var(--color-text-muted)] disabled:opacity-30">↑</button>
             <button type="button" onClick={() => move(f.id, 'down')} disabled={i === flavors.length - 1} className="text-[var(--color-text-muted)] disabled:opacity-30">↓</button>
-            <button type="button" onClick={() => remove(f.id)} className="text-[var(--color-danger)] text-xs px-1">✕</button>
+            <button type="button" onClick={() => remove(categoryId, f.id)} className="text-[var(--color-danger)] text-xs px-1">✕</button>
           </div>
         ))}
       </div>
@@ -379,6 +378,16 @@ function PricingModesPanel({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function uid() { return crypto.randomUUID() }
+
+// Regenera ids de un grupo de modificadores (y sus opciones) para usarlo como
+// payload de creación — evita reutilizar ids de otro producto/sucursal.
+function duplicateModifierGroup(mg: ModifierGroupConfig): ModifierGroupConfig {
+  const id = uid()
+  if (mg.inputType === ModifierInputType.SELECT || mg.inputType === ModifierInputType.SIZE) {
+    return { ...mg, id, options: mg.options.map(o => ({ ...o, id: uid() })) }
+  }
+  return { ...mg, id }
+}
 
 // ── Product thumbnail / placeholder ──────────────────────────────────────────
 
@@ -1497,16 +1506,110 @@ const MOCK_PRODUCTS: Product[] = [
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+interface DuplicateBranchResult { ok: number; failed: number; combosSkipped: number }
+
+function DuplicateToBranchModal({
+  branches, productCount, comboCount, inProgress, result, onClose, onConfirm,
+}: {
+  branches: { id: string; name: string }[]
+  productCount: number
+  comboCount: number
+  inProgress: boolean
+  result: DuplicateBranchResult | null
+  onClose: () => void
+  onConfirm: (targetBranchId: string) => void
+}) {
+  const [target, setTarget] = useState('')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] w-full max-w-md p-5 space-y-4">
+        <h2 className="text-lg font-bold text-[var(--color-text-primary)]">Duplicar productos a otra sucursal</h2>
+
+        {result ? (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {result.ok} producto{result.ok === 1 ? '' : 's'} duplicado{result.ok === 1 ? '' : 's'} correctamente.
+              {result.failed > 0 && ` ${result.failed} fallaron.`}
+              {result.combosSkipped > 0 && ` ${result.combosSkipped} combo${result.combosSkipped === 1 ? '' : 's'} no se duplicó automáticamente — créa${result.combosSkipped === 1 ? 'lo' : 'los'} manualmente en la sucursal destino.`}
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold hover:opacity-90 transition-opacity"
+            >
+              Cerrar
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Se copiarán los {productCount} producto{productCount === 1 ? '' : 's'} de esta sucursal a la sucursal que elijas.
+              Las categorías y sabores ya son compartidos entre todas tus sucursales, así que no hace falta duplicarlos.
+              {comboCount > 0 && ` Los ${comboCount} combo${comboCount === 1 ? '' : 's'} no se duplica${comboCount === 1 ? '' : 'n'} automáticamente.`}
+            </p>
+
+            {branches.length === 0 ? (
+              <p className="text-sm text-[var(--color-text-muted)]">No tienes otra sucursal disponible.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {branches.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setTarget(b.id)}
+                    className={[
+                      'w-full text-left px-3 py-2 rounded-xl border text-sm font-medium transition-colors',
+                      target === b.id
+                        ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/5'
+                        : 'border-[var(--color-border)] text-[var(--color-text-primary)] hover:border-[var(--color-accent)]',
+                    ].join(' ')}
+                  >
+                    {b.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-secondary)]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!target || inProgress}
+                onClick={() => onConfirm(target)}
+                className="px-4 py-2 rounded-xl bg-[var(--color-accent)] text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {inProgress ? 'Duplicando…' : 'Duplicar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function ProductsPage() {
   const branchId = useAuthStore(s => s.branchId)
+  const availableBranches = useAuthStore(s => s.availableBranches)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true }) | null>(null)
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState<string>('ALL')
+  const [showBranchDupModal, setShowBranchDupModal] = useState(false)
+  const [branchDupInProgress, setBranchDupInProgress] = useState(false)
+  const [branchDupResult, setBranchDupResult] = useState<DuplicateBranchResult | null>(null)
 
   // Category management panel
-  const [showComboModal, setShowComboModal] = useState(false)
+  const [comboModal, setComboModal] = useState<'new' | ComboToEdit | null>(null)
+  const [comboLoadError, setComboLoadError] = useState('')
   const [showCatPanel, setShowCatPanel] = useState(false)
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
@@ -1559,6 +1662,23 @@ export function ProductsPage() {
     setConfirmDeleteProductId(null)
   }
 
+  // Los combos ya no se editan con el ProductModal genérico (no entiende slots) —
+  // se cargan con sus comboSlots y se abren en CreateComboModal (doc 04 §6).
+  async function openEdit(p: Product) {
+    if (p.category !== ProductCategory.COMBO) {
+      setModal(p)
+      return
+    }
+    setComboLoadError('')
+    try {
+      const res = await api.get<{ data: ComboToEdit & { comboSlots?: ComboSlot[] } }>(`/api/v1/products/${p.id}`)
+      setComboModal({ ...res.data, comboSlots: res.data.comboSlots ?? [] })
+    } catch {
+      setComboLoadError('No se pudo cargar el combo — revisa tu conexión')
+      setModal(p)
+    }
+  }
+
   function handleDuplicate(p: Product) {
     setModal({
       _duplicate: true,
@@ -1571,6 +1691,38 @@ export function ProductsPage() {
       ingredients: p.ingredients.map(ing => ({ ...ing, id: uid() })),
       modifierGroups: p.modifierGroups.map(mg => ({ ...mg, id: uid(), productId: 'new' })),
     })
+  }
+
+  // Duplica todos los productos (menos combos) de esta sucursal hacia otra.
+  // Categorias y sabores no se tocan: viven a nivel negocio (Category no tiene
+  // branchId), asi que ya son visibles en todas las sucursales del mismo dueno.
+  // Los ingredientes tampoco se copian porque referencian inventario, que si es
+  // por sucursal - el producto duplicado queda sin receta hasta configurarla ahi.
+  async function handleDuplicateToBranch(targetBranchId: string) {
+    setBranchDupInProgress(true)
+    const nonCombo = products.filter(p => p.category !== ProductCategory.COMBO)
+    const comboCount = products.length - nonCombo.length
+    let ok = 0
+    let failed = 0
+    for (const p of nonCombo) {
+      try {
+        await api.post('/api/v1/products', {
+          branchId: targetBranchId,
+          name: p.name,
+          category: p.category,
+          basePrice: p.basePrice,
+          active: p.active,
+          modifierGroups: p.modifierGroups.map(duplicateModifierGroup),
+          variants: (p.variants ?? []).map(v => ({ ...v, id: uid() })),
+          ...(p.maxFlavors !== undefined ? { maxFlavors: p.maxFlavors } : {}),
+        })
+        ok++
+      } catch {
+        failed++
+      }
+    }
+    setBranchDupResult({ ok, failed, combosSkipped: comboCount })
+    setBranchDupInProgress(false)
   }
 
   const filtered = products.filter(p => {
@@ -1611,9 +1763,18 @@ export function ProductsPage() {
           >
             Modos de cobro
           </button>
+          {availableBranches.length > 1 && (
+            <button
+              type="button"
+              onClick={() => { setShowBranchDupModal(true); setBranchDupResult(null) }}
+              className="px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
+            >
+              Duplicar a sucursal
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setShowComboModal(true)}
+            onClick={() => setComboModal('new')}
             className="px-4 py-2 rounded-xl border border-[var(--color-accent)] text-[var(--color-accent)] text-sm font-bold hover:bg-[var(--color-accent)] hover:text-white transition-colors"
           >
             🎁 Crear combo
@@ -1859,7 +2020,7 @@ export function ProductsPage() {
                       <button type="button" onClick={() => handleDuplicate(p)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline">
                         Duplicar
                       </button>
-                      <button type="button" onClick={() => setModal(p)} className="text-xs text-[var(--color-accent)] hover:underline">
+                      <button type="button" onClick={() => openEdit(p)} className="text-xs text-[var(--color-accent)] hover:underline">
                         Editar
                       </button>
                       {confirmDeleteProductId === p.id ? (
@@ -1901,18 +2062,37 @@ export function ProductsPage() {
         />
       )}
 
-      {showComboModal && (
+      {comboModal && (
         <CreateComboModal
           products={products}
           branchId={branchId ?? ''}
-          onClose={() => setShowComboModal(false)}
+          combo={comboModal === 'new' ? undefined : comboModal}
+          onClose={() => setComboModal(null)}
           onCreated={() => {
-            setShowComboModal(false)
+            setComboModal(null)
             if (!branchId) return
             api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
               .then(res => setProducts(res.data))
               .catch(() => {})
           }}
+        />
+      )}
+
+      {comboLoadError && (
+        <p className="fixed bottom-4 right-4 z-50 bg-[var(--color-danger)] text-white text-xs px-3 py-2 rounded-lg shadow-lg">
+          {comboLoadError}
+        </p>
+      )}
+
+      {showBranchDupModal && (
+        <DuplicateToBranchModal
+          branches={availableBranches.filter(b => b.id !== branchId)}
+          productCount={products.filter(p => p.category !== ProductCategory.COMBO).length}
+          comboCount={products.filter(p => p.category === ProductCategory.COMBO).length}
+          inProgress={branchDupInProgress}
+          result={branchDupResult}
+          onClose={() => setShowBranchDupModal(false)}
+          onConfirm={handleDuplicateToBranch}
         />
       )}
     </div>
