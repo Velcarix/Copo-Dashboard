@@ -81,24 +81,25 @@ function slotReferencePrice(s: DraftSlot, eligibleProducts: Product[]): number {
   return candidates.length ? Math.min(...candidates) : 0
 }
 
-// Pasos que verá el cajero al llenar este slot — usado solo por el preview,
+// Opciones que vería el cajero al llenar este slot — usado solo por el preview visual,
 // se arma en seco con el estado local, sin llamar al backend.
-function slotPreviewLine(s: DraftSlot, eligibleProducts: Product[], allCats: CategoryMeta[]): string {
-  const modes = new Set<PricingMode>()
+interface SlotPreviewOption { label: string; delta?: number }
+
+function slotPreviewOptions(s: DraftSlot, eligibleProducts: Product[]): SlotPreviewOption[] {
   if (s.source === ComboSlotSource.CATEGORY) {
-    modes.add(allCats.find(c => c.key === s.categoryId)?.pricingMode ?? PricingMode.FIXED)
-  } else {
-    for (const o of s.options) {
-      const product = eligibleProducts.find(p => p.id === o.productId)
-      const mode = allCats.find(c => c.key === product?.category)?.pricingMode ?? PricingMode.FIXED
-      modes.add(mode)
-    }
+    if (!s.categoryId) return []
+    return eligibleProducts
+      .filter(p => p.category === s.categoryId)
+      .slice(0, 4)
+      .map(p => ({ label: p.name }))
   }
-  const parts: string[] = []
-  if (modes.has(PricingMode.PRESENTATION)) parts.push('elige presentación → sabores')
-  if (modes.has(PricingMode.VARIANTS)) parts.push('elige tamaño')
-  if (modes.has(PricingMode.FIXED) || modes.size === 0) parts.push('elige producto')
-  return parts.join(' · ')
+  return s.options.slice(0, 4).map(o => ({ label: o.name, delta: o.priceDelta > 0 ? o.priceDelta : undefined }))
+}
+
+function slotPreviewTotalOptions(s: DraftSlot, eligibleProducts: Product[]): number {
+  return s.source === ComboSlotSource.CATEGORY
+    ? eligibleProducts.filter(p => p.category === s.categoryId).length
+    : s.options.length
 }
 
 export function CreateComboModal({ products, branchId, combo, onClose, onCreated }: Props) {
@@ -106,7 +107,6 @@ export function CreateComboModal({ products, branchId, combo, onClose, onCreated
   const [name, setName] = useState(combo?.name ?? '')
   const [priceText, setPriceText] = useState(combo ? (combo.basePrice / 100).toFixed(2) : '')
   const [slots, setSlots] = useState<DraftSlot[]>(() => combo ? draftSlotsFromCombo(combo, products) : [])
-  const [showPreview, setShowPreview] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -294,30 +294,72 @@ export function CreateComboModal({ products, branchId, combo, onClose, onCreated
             </div>
           </div>
 
-          {/* Preview del cajero */}
+          {/* Preview del cajero — ilustra cómo se va a ver esto en el POS */}
           {slots.length > 0 && (
-            <div className="border border-[var(--color-border)] rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowPreview(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors"
-              >
-                <span>👀 Vista previa del cajero</span>
-                <span>{showPreview ? '▲' : '▼'}</span>
-              </button>
-              {showPreview && (
-                <div className="px-4 py-3 border-t border-[var(--color-border)] space-y-2 bg-[var(--color-bg)]">
-                  {slots.map((s, i) => (
-                    <p key={s.key} className="text-xs text-[var(--color-text-secondary)]">
-                      <span className="font-semibold text-[var(--color-text-primary)]">
-                        Paso {i + 1} · {s.name.trim() || '(sin nombre)'} ({s.quantity} {s.quantity === 1 ? 'unidad' : 'unidades'})
-                      </span>
-                      {' — '}
-                      {slotIsValid(s) ? slotPreviewLine(s, eligibleProducts, allCats) : 'incompleto'}
+            <div>
+              <p className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">
+                👀 Así lo verá el cajero
+              </p>
+              <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 space-y-2.5">
+                {/* Tarjeta de producto, como se ve en el grid del POS */}
+                <div className="flex items-center gap-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3">
+                  <div className="w-12 h-12 rounded-lg bg-[var(--color-accent)]/10 flex items-center justify-center text-xl shrink-0">
+                    🍽️
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[var(--color-text-primary)] truncate">
+                      {name.trim() || 'Nombre del combo'}
                     </p>
-                  ))}
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      {totalUnits} {totalUnits === 1 ? 'producto a elegir' : 'productos a elegir'}
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold text-[var(--color-accent)] shrink-0">
+                    {priceInCents > 0 ? formatCurrency(priceInCents) : '$0.00'}
+                  </p>
                 </div>
-              )}
+
+                {/* Pasos que el cajero llena al tocar el combo */}
+                <div className="space-y-2">
+                  {slots.map((s, i) => {
+                    const options = slotPreviewOptions(s, eligibleProducts)
+                    const totalOptions = slotPreviewTotalOptions(s, eligibleProducts)
+                    const valid = slotIsValid(s)
+                    return (
+                      <div key={s.key} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5">
+                        <p className="text-xs font-semibold text-[var(--color-text-primary)] mb-1.5">
+                          Paso {i + 1} · {s.name.trim() || '(sin nombre)'}
+                          <span className="font-normal text-[var(--color-text-muted)]"> — elige {s.quantity}</span>
+                        </p>
+                        {!valid ? (
+                          <p className="text-xs text-[var(--color-danger)]">
+                            Slot incompleto — {s.source === ComboSlotSource.CATEGORY ? 'elige una categoría' : 'agrega al menos un producto'}
+                          </p>
+                        ) : options.length === 0 ? (
+                          <p className="text-xs text-[var(--color-text-muted)]">Sin productos activos en esta categoría todavía</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {options.map((o, oi) => (
+                              <span
+                                key={oi}
+                                className="inline-flex items-center gap-1 text-xs bg-[var(--color-accent)]/10 text-[var(--color-accent)] rounded-full px-2.5 py-1 font-medium"
+                              >
+                                {o.label}
+                                {o.delta ? <span className="text-[10px]">+{formatCurrency(o.delta)}</span> : null}
+                              </span>
+                            ))}
+                            {totalOptions > options.length && (
+                              <span className="text-xs text-[var(--color-text-muted)] px-1 py-1">
+                                +{totalOptions - options.length} más
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
