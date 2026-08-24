@@ -187,9 +187,24 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 export function DashboardLayout() {
-  const { logout, user, permissions } = useAuthStore()
+  const { logout, user, permissions, availableBranches, branchId } = useAuthStore()
+  const { selectedId, setSelected } = useBranchStore()
   const hasComandero = permissions?.canAccessComandero ?? false
   const items = NAV_ITEMS.filter(item => !item.comanderoOnly || hasComandero)
+
+  // "Vista de datos" persiste en localStorage entre sesiones — si apuntaba a una
+  // sucursal a la que el empleado ya no tiene acceso (se la quitaron, cambió de
+  // negocio, etc.), o a 'ALL' sin ser OWNER (el backend solo permite la vista
+  // consolidada a OWNER), cae de vuelta a la sesión activa en vez de quedar en un
+  // estado roto silenciosamente (requests que siempre fallan con 403).
+  useEffect(() => {
+    if (availableBranches.length === 0) return
+    const isStaleAll = selectedId === 'ALL' && user?.role !== EmployeeRole.OWNER
+    const isUnknownBranch = selectedId !== 'ALL' && !availableBranches.some(b => b.id === selectedId)
+    if (isStaleAll || isUnknownBranch) {
+      setSelected(branchId ?? 'ALL')
+    }
+  }, [availableBranches, selectedId, branchId, user, setSelected])
 
   return (
     <div className="flex h-dvh bg-[var(--color-bg)]">

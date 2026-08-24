@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { exportDashboardToExcel } from '@/shared/lib/exportExcel'
@@ -6,6 +6,7 @@ import { MetricCard } from '../components/MetricCard'
 import { InventoryAlert } from '../components/InventoryAlert'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { BranchBadge } from '@/shared/components/BranchSelector'
+import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 import {
   ResponsiveContainer,
   AreaChart, Area,
@@ -48,6 +49,34 @@ interface DashboardData {
   extras?: { attachRate: number; top: { name: string; revenue: number; units: number }[] }
 }
 
+interface SalesTargets {
+  dailySalesTarget: number
+  weeklySalesTarget: number
+  monthlySalesTarget: number
+  yearlySalesTarget: number
+}
+
+const EMPTY_TARGETS: SalesTargets = {
+  dailySalesTarget: 0, weeklySalesTarget: 0, monthlySalesTarget: 0, yearlySalesTarget: 0,
+}
+
+// Cada filtro de período usa su propia meta — ya no existe una única "meta de
+// ventas" global. 'year' sin yearlySalesTarget configurada usa monthlySalesTarget
+// × 12 como referencia explícita (ver goalTarget más abajo).
+const PERIOD_TARGET_FIELD: Record<Period, keyof SalesTargets> = {
+  today: 'dailySalesTarget',
+  week:  'weeklySalesTarget',
+  month: 'monthlySalesTarget',
+  year:  'yearlySalesTarget',
+}
+
+const PERIOD_TARGET_LABEL: Record<Period, string> = {
+  today: 'Meta diaria',
+  week:  'Meta semanal',
+  month: 'Meta mensual',
+  year:  'Meta anual',
+}
+
 function chartFmt(v: number) {
   return v >= 100_000
     ? `$${(v / 100_000).toFixed(0)}k`
@@ -58,18 +87,17 @@ export function DashboardHome() {
   const [period, setPeriod] = useState<Period>('today')
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [goalTarget, setGoalTarget] = useState(() =>
-    parseInt(localStorage.getItem('dash_goal') ?? '500000', 10),
-  )
+  const [targets, setTargets] = useState<SalesTargets>(EMPTY_TARGETS)
   const [editingGoal, setEditingGoal] = useState(false)
   const [goalInput, setGoalInput] = useState('')
+  const [savingGoal, setSavingGoal] = useState(false)
   const { selectedId, branches } = useBranchStore()
   const isGlobal = selectedId === 'ALL'
   const branchParam = isGlobal ? 'all' : selectedId
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
     let cancelled = false
-    async function load() {
+    ;(async () => {
       setLoading(true)
       try {
         const res = await api.get<{ data: DashboardData }>(
@@ -84,22 +112,48 @@ export function DashboardHome() {
       } finally {
         if (!cancelled) setLoading(false)
       }
-    }
-    load()
+    })()
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchParam, period])
 
-  function saveGoal() {
+  useEffect(loadDashboard, [loadDashboard])
+  useVisibilityRefetch(loadDashboard)
+
+  // Metas por período — pertenecen a la sucursal, no existe un solo valor global.
+  // En vista "Todas las sucursales" no hay un branchId único que consultar, así que
+  // el bloque de meta se oculta (ver render) en vez de inventar una agregación.
+  useEffect(() => {
+    if (isGlobal || !selectedId) { setTargets(EMPTY_TARGETS); return }
+    let cancelled = false
+    api.get<{ data: Partial<SalesTargets> }>(`/api/v1/settings/branch?branchId=${selectedId}`)
+      .then(res => { if (!cancelled) setTargets({ ...EMPTY_TARGETS, ...res.data }) })
+      .catch(() => { if (!cancelled) setTargets(EMPTY_TARGETS) })
+    return () => { cancelled = true }
+  }, [selectedId, isGlobal])
+
+  const targetField = PERIOD_TARGET_FIELD[period]
+  const goalTarget = period === 'year' && !targets.yearlySalesTarget
+    ? targets.monthlySalesTarget * 12
+    : targets[targetField]
+  const goalPct = goalTarget > 0 && data ? Math.min((data.totalSales / goalTarget) * 100, 100) : 0
+
+  async function saveGoal() {
     const v = parseInt(goalInput, 10)
-    if (!isNaN(v) && v > 0) {
-      const cents = v * 100
-      setGoalTarget(cents)
-      localStorage.setItem('dash_goal', String(cents))
+    if (isNaN(v) || v < 0 || !selectedId || isGlobal) { setEditingGoal(false); return }
+    const cents = v * 100
+    setSavingGoal(true)
+    try {
+      await api.put(`/api/v1/settings/branch?branchId=${selectedId}`, { [targetField]: cents })
+      setTargets(t => ({ ...t, [targetField]: cents }))
+      setEditingGoal(false)
+    } catch {
+      /* deja el modal abierto para reintentar */
+    } finally {
+      setSavingGoal(false)
     }
-    setEditingGoal(false)
   }
 
-  const goalPct = data ? Math.min((data.totalSales / goalTarget) * 100, 100) : 0
   const activeBranches = branches.filter(b => b.isActive)
 
   function handleExport() {
@@ -195,53 +249,69 @@ export function DashboardHome() {
         )}
       </div>
 
-      {/* ── Sales goal ── */}
-      <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] px-4 py-3">
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
-            Meta de ventas
-          </p>
-          {editingGoal ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--color-text-muted)]">$</span>
-              <input
-                type="number"
-                value={goalInput}
-                onChange={e => setGoalInput(e.target.value)}
-                onFocus={e => e.target.select()}
-                onKeyDown={e => e.key === 'Enter' && saveGoal()}
-                placeholder="Meta en pesos"
-                autoFocus
-                className="w-28 px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)]"
-              />
-              <button type="button" onClick={saveGoal} className="text-xs text-[var(--color-accent)] font-semibold">Guardar</button>
-              <button type="button" onClick={() => setEditingGoal(false)} className="text-xs text-[var(--color-text-muted)]">Cancelar</button>
-            </div>
+      {/* ── Sales goal — una meta distinta por período (hoy/semana/mes/año), por
+          sucursal. En vista consolidada ("Todas las sucursales") no hay un branchId
+          único al que asociarle una meta, así que el bloque no se muestra. ── */}
+      {!isGlobal && (
+        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] px-4 py-3">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
+              {PERIOD_TARGET_LABEL[period]}
+              {period === 'year' && !targets.yearlySalesTarget && targets.monthlySalesTarget > 0 && (
+                <span className="normal-case font-normal text-[var(--color-text-muted)]"> (mensual × 12)</span>
+              )}
+            </p>
+            {editingGoal ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--color-text-muted)]">$</span>
+                <input
+                  type="number"
+                  value={goalInput}
+                  onChange={e => setGoalInput(e.target.value)}
+                  onFocus={e => e.target.select()}
+                  onKeyDown={e => e.key === 'Enter' && saveGoal()}
+                  placeholder="Meta en pesos"
+                  autoFocus
+                  disabled={savingGoal}
+                  className="w-28 px-2 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] focus:outline-none focus:border-[var(--color-accent)]"
+                />
+                <button type="button" onClick={saveGoal} disabled={savingGoal} className="text-xs text-[var(--color-accent)] font-semibold disabled:opacity-50">
+                  {savingGoal ? '…' : 'Guardar'}
+                </button>
+                <button type="button" onClick={() => setEditingGoal(false)} disabled={savingGoal} className="text-xs text-[var(--color-text-muted)]">Cancelar</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setGoalInput(String(Math.round(goalTarget / 100))); setEditingGoal(true) }}
+                className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
+              >
+                {goalTarget > 0 ? `Meta: ${formatCurrency(goalTarget)} — Editar` : 'Configurar meta'}
+              </button>
+            )}
+          </div>
+          {goalTarget > 0 ? (
+            <>
+              <div className="w-full h-2.5 rounded-full bg-[var(--color-bg)] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${goalPct}%`,
+                    background: goalPct >= 100 ? '#10b981' : 'var(--color-accent)',
+                  }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">
+                {goalPct >= 100
+                  ? '100% completado — Meta alcanzada'
+                  : `${goalPct.toFixed(0)}% completado — Faltan ${formatCurrency(Math.max(0, goalTarget - (data?.totalSales ?? 0)))}`}
+              </p>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={() => { setGoalInput(String(Math.round(goalTarget / 100))); setEditingGoal(true) }}
-              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
-            >
-              Meta: {formatCurrency(goalTarget)} — Editar
-            </button>
+            <p className="text-xs text-[var(--color-text-muted)]">Sin meta configurada para este período.</p>
           )}
         </div>
-        <div className="w-full h-2.5 rounded-full bg-[var(--color-bg)] overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${goalPct}%`,
-              background: goalPct >= 100 ? '#10b981' : 'var(--color-accent)',
-            }}
-          />
-        </div>
-        <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">
-          {goalPct >= 100
-            ? '¡Meta alcanzada! 🎉'
-            : `${goalPct.toFixed(0)}% completado — Faltan ${formatCurrency(Math.max(0, goalTarget - (data?.totalSales ?? 0)))}`}
-        </p>
-      </div>
+      )}
 
       {/* ── Main sales chart ── */}
       <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">

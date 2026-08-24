@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { useBranchStore } from '@/shared/store/branchStore'
+import { useAuthStore } from '@/shared/store/authStore'
+import { EmployeeRole } from '@shared-types'
 
 // One dot color per branch index (cycles if > 5)
 const BRANCH_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
@@ -15,6 +17,11 @@ function BranchDot({ index, size = 8 }: { index: number; size?: number }) {
 
 export function BranchSelector() {
   const { branches, selectedId, setSelected } = useBranchStore()
+  // La vista consolidada ("Todas las sucursales") solo la soporta el backend para
+  // OWNER — su token es el único que refleja realmente TODAS las sucursales del
+  // negocio (ver requireAuth en el backend). Ocultarla para otros roles evita un
+  // 403 silencioso al elegirla.
+  const isOwner = useAuthStore(s => s.user?.role === EmployeeRole.OWNER)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -64,31 +71,35 @@ export function BranchSelector() {
 
       {open && (
         <div className="absolute left-0 top-full mt-1 z-50 min-w-[200px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden">
-          {/* Global option */}
-          <button
-            type="button"
-            onClick={() => { setSelected('ALL'); setOpen(false) }}
-            className={[
-              'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-colors text-left',
-              selectedId === 'ALL'
-                ? 'bg-[var(--color-accent)] text-white'
-                : 'hover:bg-[var(--color-bg)] text-[var(--color-text-primary)]',
-            ].join(' ')}
-          >
-            <span className="flex gap-0.5">
-              {branches.slice(0, 3).map((_, i) => (
-                <BranchDot key={i} index={i} size={6} />
-              ))}
-            </span>
-            <div>
-              <p className="font-semibold">Todas las sucursales</p>
-              <p className={`text-[10px] ${selectedId === 'ALL' ? 'opacity-75' : 'text-[var(--color-text-muted)]'}`}>
-                Vista global consolidada
-              </p>
-            </div>
-          </button>
+          {/* Global option — solo OWNER, ver comentario arriba */}
+          {isOwner && (
+            <>
+              <button
+                type="button"
+                onClick={() => { setSelected('ALL'); setOpen(false) }}
+                className={[
+                  'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-colors text-left',
+                  selectedId === 'ALL'
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'hover:bg-[var(--color-bg)] text-[var(--color-text-primary)]',
+                ].join(' ')}
+              >
+                <span className="flex gap-0.5">
+                  {branches.slice(0, 3).map((_, i) => (
+                    <BranchDot key={i} index={i} size={6} />
+                  ))}
+                </span>
+                <div>
+                  <p className="font-semibold">Todas las sucursales</p>
+                  <p className={`text-[10px] ${selectedId === 'ALL' ? 'opacity-75' : 'text-[var(--color-text-muted)]'}`}>
+                    Vista global consolidada
+                  </p>
+                </div>
+              </button>
 
-          <div className="border-t border-[var(--color-border)]" />
+              <div className="border-t border-[var(--color-border)]" />
+            </>
+          )}
 
           {/* Per-branch options */}
           {branches.map((branch, idx) => (

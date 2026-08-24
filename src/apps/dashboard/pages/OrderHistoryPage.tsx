@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/shared/lib/currency'
 import { api } from '@/shared/lib/api'
-import { useAuthStore } from '@/shared/store/authStore'
+import { useSingleDataViewBranchId } from '@/shared/hooks/useDataViewBranch'
+import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 
 type OrderStatus = 'completed' | 'cancelled' | 'refunded'
 
@@ -49,14 +50,14 @@ interface ApiOrder {
 }
 
 export function OrderHistoryPage() {
-  const branchId = useAuthStore(s => s.branchId)
+  const branchId = useSingleDataViewBranchId()
   const [orders, setOrders] = useState<HistoryOrder[]>([])
   const [modal, setModal] = useState<Modal>({ type: 'none' })
   const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!branchId) return
     setLoading(true)
     api.get<{ data: ApiOrder[]; total: number }>(`/api/v1/orders?branchId=${branchId}&limit=50`)
@@ -76,6 +77,9 @@ export function OrderHistoryPage() {
       .catch(() => { /* show empty list */ })
       .finally(() => setLoading(false))
   }, [branchId])
+
+  useEffect(load, [load])
+  useVisibilityRefetch(load)
 
   const filtered = orders.filter(o => filterStatus === 'all' || o.status === filterStatus)
 

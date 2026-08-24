@@ -34,6 +34,9 @@ interface AuthState {
     availableBranches?: AvailableBranch[],
   ) => void
   updateAuthToken: (token: string, branchId: string, role: EmployeeRole) => void
+  /** Updates only the access token — used by the silent refresh flow, which
+   *  reissues a token for the same branch/role and must not disturb them. */
+  setAccessToken: (token: string) => void
   setPermissions: (permissions: ProfilePermissions) => void
   setLicense: (key: string, branchName: string, businessName: string) => void
   clearLicense: () => void
@@ -70,6 +73,10 @@ export const useAuthStore = create<AuthState>()(
           branchId,
           user: state.user ? { ...state.user, role } : null,
         }))
+      },
+
+      setAccessToken(accessToken) {
+        set({ accessToken })
       },
 
       setPermissions(permissions) {

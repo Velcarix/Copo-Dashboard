@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
-import { useAuthStore } from '@/shared/store/authStore'
+import { useSingleDataViewBranchId } from '@/shared/hooks/useDataViewBranch'
+import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ function fillMissingDays(days: SalesDay[], from: string, to: string): SalesDay[]
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ReportsPage() {
-  const branchId = useAuthStore(s => s.branchId)
+  const branchId = useSingleDataViewBranchId()
   const [tab, setTab] = useState<Tab>('sales')
 
   const [from, setFrom] = useState(() => {
@@ -113,7 +114,7 @@ export function ReportsPage() {
 
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true)
     if (tab === 'sales') {
       Promise.all([
@@ -135,7 +136,12 @@ export function ReportsPage() {
         .catch(() => { if (import.meta.env.DEV) setInventory(MOCK_INVENTORY) })
         .finally(() => setLoading(false))
     }
-  }, [tab, from, to, ordersPage])
+    // branchId (Vista de datos) faltaba en las dependencias — cambiar de sucursal
+    // no refrescaba reportes/órdenes/inventario hasta cambiar tab/fechas.
+  }, [tab, from, to, ordersPage, branchId])
+
+  useEffect(load, [load])
+  useVisibilityRefetch(load)
 
   const TABS: { id: Tab; label: string }[] = [
     { id: 'sales',     label: 'Ventas'     },
