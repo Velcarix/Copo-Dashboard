@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { useAuthStore } from '@/shared/store/authStore'
 import { REGIMEN_FISCAL_OPTIONS } from '@/shared/data/regimenFiscal'
+import { LoyaltyIntegrationSection } from '@/apps/dashboard/components/LoyaltyIntegrationSection'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,12 +85,14 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: {
   )
 }
 
-type Tab = 'fiscal' | 'kitchen' | 'tables'
+type Tab = 'fiscal' | 'kitchen' | 'tables' | 'loyalty'
+type SavableTab = Exclude<Tab, 'loyalty'>
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'fiscal',   label: 'Datos Fiscales', icon: '🧾' },
   { id: 'kitchen',  label: 'Cocina',         icon: '🍳' },
   { id: 'tables',   label: 'Mesas',          icon: '🗺️' },
+  { id: 'loyalty',  label: 'Copo Loyalty',   icon: '🎟️' },
 ]
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -106,13 +109,13 @@ export function SettingsPage() {
   const [tables, setTables] = useState<TablesSettings>(MOCK_TABLES)
 
   useEffect(() => {
-    if (!branchId) return
-    const endpoints: Record<Tab, string> = {
+    if (!branchId || tab === 'loyalty') return
+    const endpoints: Record<SavableTab, string> = {
       fiscal:   `/api/v1/settings/fiscal?branchId=${branchId}`,
       kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
       tables:   `/api/v1/settings/tables?branchId=${branchId}`,
     }
-    const setters: Record<Tab, (d: unknown) => void> = {
+    const setters: Record<SavableTab, (d: unknown) => void> = {
       fiscal:   d => setFiscal(d as FiscalSettings),
       kitchen:  d => setKitchen(d as KitchenSettings),
       tables:   d => setTables(d as TablesSettings),
@@ -123,16 +126,17 @@ export function SettingsPage() {
   }, [tab])
 
   async function handleSave() {
+    if (tab === 'loyalty') return
     setSaving(true)
     setError('')
     setSaved(false)
 
-    const endpoints: Record<Tab, string> = {
+    const endpoints: Record<SavableTab, string> = {
       fiscal:   `/api/v1/settings/fiscal?branchId=${branchId}`,
       kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
       tables:   `/api/v1/settings/tables?branchId=${branchId}`,
     }
-    const bodies: Record<Tab, unknown> = {
+    const bodies: Record<SavableTab, unknown> = {
       fiscal, kitchen, tables,
     }
 
@@ -258,17 +262,24 @@ export function SettingsPage() {
         </div>
       )}
 
-      {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
-      {saved && <p className="text-sm text-[var(--color-success)]">✓ Cambios guardados</p>}
+      {/* ── Copo Loyalty ── */}
+      {tab === 'loyalty' && <LoyaltyIntegrationSection />}
 
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving}
-        className="px-6 py-3 rounded-xl bg-[var(--color-accent)] text-white font-bold text-sm disabled:opacity-40"
-      >
-        {saving ? 'Guardando…' : 'Guardar cambios'}
-      </button>
+      {tab !== 'loyalty' && (
+        <>
+          {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
+          {saved && <p className="text-sm text-[var(--color-success)]">✓ Cambios guardados</p>}
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-3 rounded-xl bg-[var(--color-accent)] text-white font-bold text-sm disabled:opacity-40"
+          >
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </>
+      )}
     </div>
   )
 }
