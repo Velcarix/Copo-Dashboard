@@ -87,13 +87,138 @@ function Field({ label, value, onChange, type = 'text', placeholder = '' }: {
   )
 }
 
-type Tab = 'general' | 'kitchen' | 'tables'
+type Tab = 'general' | 'kitchen' | 'tables' | 'loyalty'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'general',  label: 'General',  icon: '🏪' },
   { id: 'kitchen',  label: 'Cocina',   icon: '🍳' },
   { id: 'tables',   label: 'Mesas',    icon: '🗺️' },
+  { id: 'loyalty',  label: 'Copo Loyalty', icon: '🎟️' },
 ]
+
+// ─── Copo Loyalty — vinculación con loyalty-api vía link token ────────────────
+// La app Loyalty (Ajustes › Conectar Copo POS) genera un código de 8 dígitos.
+// Aquí se captura y se canjea contra el POS (POST /api/v1/loyalty-integration/link),
+// que a su vez llama a loyalty-api y guarda el link token cifrado en Business.
+// Contrato completo: docs/04_COPO_INTEGRACION.md.
+
+interface LoyaltyLinkStatus {
+  linked: boolean
+  since?: string
+}
+
+function LoyaltySection() {
+  const [status, setStatus] = useState<LoyaltyLinkStatus | null>(null)
+  const [loadingStatus, setLoadingStatus] = useState(true)
+  const [statusError, setStatusError] = useState('')
+  const [code, setCode] = useState('')
+  const [linking, setLinking] = useState(false)
+  const [linkError, setLinkError] = useState('')
+  const [unlinking, setUnlinking] = useState(false)
+
+  async function loadStatus() {
+    setLoadingStatus(true)
+    setStatusError('')
+    try {
+      const res = await api.get<{ data: LoyaltyLinkStatus }>('/api/v1/loyalty-integration/status')
+      setStatus(res.data)
+    } catch (err) {
+      setStatusError(err instanceof ApiError ? err.message : 'No se pudo consultar el estado de vinculación')
+    } finally {
+      setLoadingStatus(false)
+    }
+  }
+
+  useEffect(() => { void loadStatus() }, [])
+
+  async function handleLink() {
+    const trimmed = code.replace(/\s/g, '')
+    if (trimmed.length !== 8) {
+      setLinkError('El código tiene 8 dígitos')
+      return
+    }
+    setLinking(true)
+    setLinkError('')
+    try {
+      await api.post('/api/v1/loyalty-integration/link', { code: trimmed })
+      setCode('')
+      await loadStatus()
+    } catch (err) {
+      setLinkError(err instanceof ApiError ? err.message : 'No se pudo vincular con Copo Loyalty')
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  async function handleUnlink() {
+    if (!confirm('¿Seguro que quieres desvincular este negocio de Copo Loyalty?')) return
+    setUnlinking(true)
+    setLinkError('')
+    try {
+      await api.delete('/api/v1/loyalty-integration/link')
+      await loadStatus()
+    } catch (err) {
+      setLinkError(err instanceof ApiError ? err.message : 'No se pudo desvincular')
+    } finally {
+      setUnlinking(false)
+    }
+  }
+
+  return (
+    <div className="bg-[var(--color-surface)] rounded-2xl p-5 border border-[var(--color-border)] space-y-4">
+      <h2 className="font-semibold text-[var(--color-text-primary)] text-sm uppercase tracking-wide">Conectar Copo Loyalty</h2>
+
+      {loadingStatus ? (
+        <p className="text-sm text-[var(--color-text-secondary)]">Consultando estado…</p>
+      ) : statusError ? (
+        <div className="space-y-2">
+          <p className="text-sm text-[var(--color-danger)]">{statusError}</p>
+          <button type="button" onClick={() => void loadStatus()} className="text-xs underline text-[var(--color-accent)]">
+            Reintentar
+          </button>
+        </div>
+      ) : status?.linked ? (
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-[var(--color-success)]">✓ Vinculado con Copo Loyalty</p>
+          {status.since && (
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Desde {new Date(status.since).toLocaleDateString('es-MX')}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleUnlink()}
+            disabled={unlinking}
+            className="px-4 py-2 rounded-lg border border-[var(--color-danger)] text-[var(--color-danger)] text-sm font-semibold disabled:opacity-40"
+          >
+            {unlinking ? 'Desvinculando…' : 'Desvincular'}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Genera un código en la app Loyalty (Ajustes › Conectar Copo POS) y captúralo aquí.
+          </p>
+          <Field
+            label="Código de vinculación (8 dígitos)"
+            value={code}
+            onChange={setCode}
+            placeholder="0000 0000"
+          />
+          {linkError && <p className="text-sm text-[var(--color-danger)]">{linkError}</p>}
+          <button
+            type="button"
+            onClick={() => void handleLink()}
+            disabled={linking || code.replace(/\s/g, '').length !== 8}
+            className="px-4 py-2 rounded-lg bg-[var(--color-accent)] text-white text-sm font-bold disabled:opacity-40"
+          >
+            {linking ? 'Vinculando…' : 'Vincular'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -109,13 +234,13 @@ export function SettingsPage() {
   const [tables, setTables] = useState<TablesSettings>(MOCK_TABLES)
 
   useEffect(() => {
-    if (!branchId) return
-    const endpoints: Record<Tab, string> = {
+    if (!branchId || tab === 'loyalty') return
+    const endpoints: Record<Exclude<Tab, 'loyalty'>, string> = {
       general:  `/api/v1/settings?branchId=${branchId}`,
       kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
       tables:   `/api/v1/settings/tables?branchId=${branchId}`,
     }
-    const setters: Record<Tab, (d: unknown) => void> = {
+    const setters: Record<Exclude<Tab, 'loyalty'>, (d: unknown) => void> = {
       general:  d => setBranch(d as BranchSettings),
       kitchen:  d => setKitchen(d as KitchenSettings),
       tables:   d => setTables(d as TablesSettings),
@@ -126,16 +251,17 @@ export function SettingsPage() {
   }, [tab])
 
   async function handleSave() {
+    if (tab === 'loyalty') return
     setSaving(true)
     setError('')
     setSaved(false)
 
-    const endpoints: Record<Tab, string> = {
+    const endpoints: Record<Exclude<Tab, 'loyalty'>, string> = {
       general:  `/api/v1/settings?branchId=${branchId}`,
       kitchen:  `/api/v1/settings/kitchen?branchId=${branchId}`,
       tables:   `/api/v1/settings/tables?branchId=${branchId}`,
     }
-    const bodies: Record<Tab, unknown> = {
+    const bodies: Record<Exclude<Tab, 'loyalty'>, unknown> = {
       general: branch, kitchen, tables,
     }
 
@@ -238,17 +364,24 @@ export function SettingsPage() {
         </div>
       )}
 
-      {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
-      {saved && <p className="text-sm text-[var(--color-success)]">✓ Cambios guardados</p>}
+      {/* ── Copo Loyalty ── */}
+      {tab === 'loyalty' && <LoyaltySection />}
 
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving}
-        className="px-6 py-3 rounded-xl bg-[var(--color-accent)] text-white font-bold text-sm disabled:opacity-40"
-      >
-        {saving ? 'Guardando…' : 'Guardar cambios'}
-      </button>
+      {tab !== 'loyalty' && (
+        <>
+          {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
+          {saved && <p className="text-sm text-[var(--color-success)]">✓ Cambios guardados</p>}
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-3 rounded-xl bg-[var(--color-accent)] text-white font-bold text-sm disabled:opacity-40"
+          >
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </>
+      )}
     </div>
   )
 }
