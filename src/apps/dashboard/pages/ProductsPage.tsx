@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
+import { useSingleDataViewBranchId } from '@/shared/hooks/useDataViewBranch'
+import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 import { ProductCategory, ModifierInputType, PricingMode } from '@shared-types'
 import type { ModifierGroupConfig, ModifierOptionConfig, IngredientAdjustment, ProductVariant, ComboSlot } from '@shared-types'
 import { useCategoryStore, useSortedCategories, type CategoryMeta } from '@/shared/store/categoryStore'
@@ -1048,7 +1050,7 @@ function ProductModal({
       maxFlavors: (product as Omit<Product, 'id'>).maxFlavors ?? 1,
     }
   )
-  const branchId = useAuthStore(s => s.branchId)
+  const branchId = useSingleDataViewBranchId()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'basic' | 'modifiers' | 'ingredients'>('basic')
@@ -1121,7 +1123,7 @@ function ProductModal({
     setForm(f => ({ ...f, modifierGroups: [...f.modifierGroups, duped] }))
   }
 
-  function buildModifierGroups(groups: ModifierGroupConfig[]) {
+  function buildModifierGroups(groups: ModifierGroupConfig[]): ModifierGroupConfig[] {
     return groups.map(g => ({
       ...g,
       options: 'options' in g && g.options
@@ -1132,7 +1134,7 @@ function ProductModal({
               : undefined,
           }))
         : undefined,
-    }))
+    })) as ModifierGroupConfig[]
   }
 
   async function doSave() {
@@ -1596,13 +1598,14 @@ function DuplicateToBranchModal({
 }
 
 export function ProductsPage() {
-  const branchId = useAuthStore(s => s.branchId)
+  const branchId = useSingleDataViewBranchId()
   const availableBranches = useAuthStore(s => s.availableBranches)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Product | 'new' | (Omit<Product, 'id'> & { _duplicate: true }) | null>(null)
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState<string>('ALL')
+  const [showInactive, setShowInactive] = useState(false)
   const [showBranchDupModal, setShowBranchDupModal] = useState(false)
   const [branchDupInProgress, setBranchDupInProgress] = useState(false)
   const [branchDupResult, setBranchDupResult] = useState<DuplicateBranchResult | null>(null)
@@ -1629,13 +1632,23 @@ export function ProductsPage() {
     setNewCatError('')
   }
 
-  useEffect(() => {
+  const loadProducts = useCallback(() => {
     if (!branchId) return
-    api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
+    setLoading(true)
+    // "Eliminar" es un soft-delete (product.active = false, igual que el toggle
+    // Activo/Inactivo — no se puede borrar la fila porque OrderItem referencia el
+    // producto en órdenes históricas). Por default solo pedimos los activos para que
+    // un producto "eliminado" deje de aparecer de verdad; "Mostrar inactivos" trae
+    // active=all para poder encontrarlos y reactivarlos si fue un error.
+    const activeParam = showInactive ? 'all' : 'true'
+    api.get<{ data: Product[] }>(`/api/v1/products?active=${activeParam}&branchId=${branchId}`)
       .then(res => setProducts(res.data))
       .catch(() => { if (import.meta.env.DEV) setProducts(MOCK_PRODUCTS) })
       .finally(() => setLoading(false))
-  }, [branchId])
+  }, [branchId, showInactive])
+
+  useEffect(loadProducts, [loadProducts])
+  useVisibilityRefetch(loadProducts)
 
   useEffect(() => {
     if (branchId && useCategoryStore.getState().branchId !== branchId) loadCats(branchId)
@@ -1962,6 +1975,15 @@ export function ProductsPage() {
             <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>
           ))}
         </select>
+        <label className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--color-text-secondary)] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={e => setShowInactive(e.target.checked)}
+            className="rounded border-[var(--color-border)]"
+          />
+          Mostrar inactivos/eliminados
+        </label>
       </div>
 
       {/* Table */}

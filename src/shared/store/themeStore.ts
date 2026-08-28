@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { applyTheme, initTheme, storeTheme, type Theme } from '@/shared/lib/theme'
 import { saveThemeToDB } from '@/shared/lib/db'
 
-interface ThemeState {
+export interface ThemeState {
   theme: Theme
   toggleTheme: () => Promise<void>
   setTheme: (t: Theme) => Promise<void>

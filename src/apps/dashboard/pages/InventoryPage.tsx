@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import React from 'react'
 import { api, ApiError } from '@/shared/lib/api'
-import { useAuthStore } from '@/shared/store/authStore'
+import { useSingleDataViewBranchId } from '@/shared/hooks/useDataViewBranch'
+import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 
 interface InventoryItem {
   id: string
@@ -28,7 +29,7 @@ const UNIT_LABELS: Record<string, string> = {
 }
 
 export function InventoryPage() {
-  const branchId = useAuthStore(s => s.branchId)
+  const branchId = useSingleDataViewBranchId()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [adjustId, setAdjustId] = useState<string | null>(null)
@@ -42,13 +43,17 @@ export function InventoryPage() {
   const [newItemError, setNewItemError] = useState('')
   const [savingNew, setSavingNew] = useState(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!branchId) { setLoading(false); return }
+    setLoading(true)
     api.get<{ data: InventoryItem[] }>(`/api/v1/inventory?branchId=${branchId}`)
       .then(res => setItems(res.data))
       .catch(() => { if (import.meta.env.DEV) setItems(MOCK_INVENTORY) })
       .finally(() => setLoading(false))
   }, [branchId])
+
+  useEffect(load, [load])
+  useVisibilityRefetch(load)
 
   async function handleAdjust(item: InventoryItem) {
     const qty = parseFloat(adjustQty)
@@ -76,6 +81,7 @@ export function InventoryPage() {
     try {
       const res = await api.post<{ data: InventoryItem }>('/api/v1/inventory', {
         name: newItem.name, unit: newItem.unit, currentStock: stock, minStock: min,
+        branchId: branchId ?? undefined,
       })
       setItems(prev => [...prev, res.data])
       setNewItem({ name: '', unit: 'grams', currentStock: '', minStock: '' })

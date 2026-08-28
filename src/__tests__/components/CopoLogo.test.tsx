@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { CopoLogo } from '@/shared/components/CopoLogo'
-import { useThemeStore } from '@/shared/store/themeStore'
+import { useThemeStore, type ThemeState } from '@/shared/store/themeStore'
 
 vi.mock('@/shared/store/themeStore', () => ({
   useThemeStore: vi.fn(),
@@ -9,7 +9,11 @@ vi.mock('@/shared/store/themeStore', () => ({
 
 function mockTheme(theme: 'light' | 'dark') {
   vi.mocked(useThemeStore).mockImplementation(
-    (selector: (s: { theme: string }) => unknown) => selector({ theme }),
+    (selector: (s: ThemeState) => unknown) => selector({
+      theme,
+      toggleTheme: async () => {},
+      setTheme: async () => {},
+    }),
   )
 }
 
