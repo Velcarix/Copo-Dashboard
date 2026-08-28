@@ -2,7 +2,6 @@ import { useRef, useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { CopoLogo } from '@/shared/components/CopoLogo'
-import { BranchSelector } from '@/shared/components/BranchSelector'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api } from '@/shared/lib/api'
@@ -18,12 +17,19 @@ const ROLE_LABELS: Record<EmployeeRole, string> = {
 
 const BRANCH_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
 
-function SwitchBranchDropdown() {
-  const { availableBranches, branchId, updateAuthToken } = useAuthStore()
-  const { setSelected } = useBranchStore()
+// Fusiona lo que antes eran dos controles separados ("Sesión activa" para cambiar
+// de sucursal autenticada y "Vista de datos" para filtrar reportes) en un solo
+// dropdown: elegir una sucursal cambia ambas cosas a la vez, y "Todas las
+// sucursales" (solo OWNER) ajusta unicamente la vista de datos sin tocar la
+// sesión, ya que el backend no permite autenticarse como "todas" a la vez.
+function SwitchBranchDropdown({ compact = false }: { compact?: boolean }) {
+  const { availableBranches, branchId, user, updateAuthToken } = useAuthStore()
+  const { selectedId, setSelected } = useBranchStore()
   const [open, setOpen] = useState(false)
   const [switching, setSwitching] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const isOwner = user?.role === EmployeeRole.OWNER
+  const isAll = selectedId === 'ALL'
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -39,7 +45,7 @@ function SwitchBranchDropdown() {
   const currentIdx = availableBranches.findIndex(b => b.id === branchId)
 
   async function handleSwitch(targetId: string, role: EmployeeRole) {
-    if (targetId === branchId) { setOpen(false); return }
+    if (targetId === branchId) { setSelected(targetId); setOpen(false); return }
     setSwitching(targetId)
     try {
       const res = await api.post<{ data: { accessToken: string } }>(
@@ -54,27 +60,43 @@ function SwitchBranchDropdown() {
     }
   }
 
+  function handleSelectAll() {
+    setSelected('ALL')
+    setOpen(false)
+  }
+
   return (
-    <div ref={ref} className="relative px-3 pt-2 pb-2 border-b border-[var(--color-border)]">
-      <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 px-1">
-        Sesión activa
-      </p>
+    <div ref={ref} className={compact ? 'relative min-w-0' : 'relative px-3 pt-2 pb-2 border-b border-[var(--color-border)]'}>
+      {!compact && (
+        <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 px-1">
+          Sesión activa
+        </p>
+      )}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         className={[
-          'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium w-full transition-colors',
+          'flex items-center gap-2 rounded-lg text-xs font-medium transition-colors',
+          compact ? 'px-2 py-1 w-full' : 'px-3 py-1.5 w-full',
           'border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-border)]',
           'text-[var(--color-text-primary)]',
         ].join(' ')}
       >
-        <span
-          className="w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-white font-bold text-[10px]"
-          style={{ background: BRANCH_COLORS[currentIdx >= 0 ? currentIdx : 0] }}
-        >
-          {current?.name.charAt(0).toUpperCase()}
-        </span>
-        <span className="flex-1 text-left truncate">{current?.name}</span>
+        {isAll ? (
+          <span className="flex gap-0.5 w-5 justify-center shrink-0">
+            {availableBranches.slice(0, 3).map((_, i) => (
+              <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: BRANCH_COLORS[i % BRANCH_COLORS.length] }} />
+            ))}
+          </span>
+        ) : (
+          <span
+            className="w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-white font-bold text-[10px]"
+            style={{ background: BRANCH_COLORS[currentIdx >= 0 ? currentIdx : 0] }}
+          >
+            {current?.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="flex-1 text-left truncate">{isAll ? 'Todas las sucursales' : current?.name}</span>
         <svg
           width="10" height="10" viewBox="0 0 10 10" fill="currentColor"
           className={`shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? 'rotate-180' : ''}`}
@@ -84,7 +106,35 @@ function SwitchBranchDropdown() {
       </button>
 
       {open && (
-        <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden">
+        <div className={compact ? 'absolute left-0 top-full mt-1 z-50 min-w-[220px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden' : 'absolute left-3 right-3 top-full mt-1 z-50 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden'}>
+          {isOwner && (
+            <>
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className={[
+                  'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-colors text-left',
+                  isAll
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'hover:bg-[var(--color-bg)] text-[var(--color-text-primary)]',
+                ].join(' ')}
+              >
+                <span className="flex gap-0.5 w-5 justify-center shrink-0">
+                  {availableBranches.slice(0, 3).map((_, i) => (
+                    <span key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: BRANCH_COLORS[i % BRANCH_COLORS.length] }} />
+                  ))}
+                </span>
+                <div>
+                  <p className="font-semibold">Todas las sucursales</p>
+                  <p className={`text-[10px] ${isAll ? 'opacity-75' : 'text-[var(--color-text-muted)]'}`}>
+                    Vista global consolidada
+                  </p>
+                </div>
+              </button>
+              <div className="border-t border-[var(--color-border)]" />
+            </>
+          )}
+
           {availableBranches.map((branch, idx) => (
             <button
               key={branch.id}
@@ -93,7 +143,7 @@ function SwitchBranchDropdown() {
               disabled={switching !== null}
               className={[
                 'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors text-left',
-                branch.id === branchId
+                !isAll && branch.id === branchId
                   ? 'bg-[var(--color-accent)] text-white'
                   : 'hover:bg-[var(--color-bg)] text-[var(--color-text-primary)]',
               ].join(' ')}
@@ -106,7 +156,7 @@ function SwitchBranchDropdown() {
               </span>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold truncate">{branch.name}</p>
-                <p className={`text-[10px] ${branch.id === branchId ? 'opacity-75' : 'text-[var(--color-text-muted)]'}`}>
+                <p className={`text-[10px] ${!isAll && branch.id === branchId ? 'opacity-75' : 'text-[var(--color-text-muted)]'}`}>
                   {ROLE_LABELS[branch.role] ?? branch.role}
                 </p>
               </div>
@@ -216,14 +266,10 @@ export function DashboardLayout() {
           <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Panel de control</p>
         </div>
 
-        {/* Session branch switcher — only when employee has multiple branches */}
+        {/* Session branch switcher — only when employee has multiple branches.
+            También controla qué sucursal ven Reportes/Órdenes/Inventario/Productos
+            ("Vista de datos" ya no es un control separado, ver SwitchBranchDropdown). */}
         <SwitchBranchDropdown />
-
-        {/* Branch selector (data view filter) */}
-        <div className="px-3 pt-3 pb-2 border-b border-[var(--color-border)]">
-          <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5 px-1">Vista de datos</p>
-          <BranchSelector />
-        </div>
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
@@ -271,7 +317,7 @@ export function DashboardLayout() {
             {'C\u200bO\u200bP\u200bO'}
           </span>
           <div className="flex-1 min-w-0">
-            <BranchSelector />
+            <SwitchBranchDropdown compact />
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <ThemeToggle />
