@@ -58,6 +58,12 @@ interface EmployeeForm {
   password: string
   hasPassword: boolean
   branchAccess: BranchAccessForm[]
+  /**
+   * true = "todas las sucursales": se le da acceso a todas con el mismo rol
+   * principal, sin elegir una por una. Es solo un modo de la UI — el backend
+   * sigue guardando un acceso por sucursal (no existe un comodín "todas").
+   */
+  allBranchesMode: boolean
 }
 
 function deriveUsername(name: string): string {
@@ -78,6 +84,7 @@ const emptyForm = (): EmployeeForm => ({
   password: '',
   hasPassword: false,
   branchAccess: [],
+  allBranchesMode: false,
 })
 
 /** Settings that are "sensitive" and require admin password confirmation */
@@ -430,6 +437,18 @@ export function EmployeesPage() {
       })
   }, [branchId])
 
+  // En modo "todas las sucursales" el acceso se deriva: todas las sucursales
+  // (menos la actual, que ya va implícita) con el rol principal del empleado.
+  useEffect(() => {
+    if (!form.allBranchesMode) return
+    setForm(f => ({
+      ...f,
+      branchAccess: allBranches
+        .filter(b => b.id !== branchId)
+        .map(b => ({ branchId: b.id, role: f.role })),
+    }))
+  }, [form.allBranchesMode, form.role, allBranches, branchId])
+
   function openNew() {
     setForm(emptyForm())
     setEditEmployee('new')
@@ -446,6 +465,7 @@ export function EmployeesPage() {
       password: '',
       hasPassword: emp.hasPassword,
       branchAccess: [],
+      allBranchesMode: false,
     })
     setEditEmployee(emp)
     setCustomOverride(null)
@@ -456,7 +476,18 @@ export function EmployeesPage() {
     try {
       const res = await api.get<{ data: EmployeeBranchEntry[] }>(`/api/v1/employees/${emp.id}/branches`)
       const additional = res.data.filter(b => !b.isPrimary)
-      setForm(f => ({ ...f, branchAccess: additional.map(b => ({ branchId: b.id, role: b.role })) }))
+      // Si ya tiene acceso a todas las sucursales con el mismo rol, el modal
+      // se abre en "todas las sucursales" en vez de mostrarlas palomeadas una a una.
+      const primaryId = res.data.find(b => b.isPrimary)?.id ?? emp.branchId ?? branchId
+      const otherBranches = allBranches.filter(b => b.id !== primaryId)
+      const coversAll =
+        otherBranches.length > 0 &&
+        otherBranches.every(b => additional.some(a => a.id === b.id && a.role === emp.role))
+      setForm(f => ({
+        ...f,
+        branchAccess: additional.map(b => ({ branchId: b.id, role: b.role })),
+        allBranchesMode: coversAll,
+      }))
     } catch {
       // Not critical — leave branchAccess empty
     } finally {
@@ -519,10 +550,32 @@ export function EmployeesPage() {
       if (editEmployee === 'new') {
         const res = await api.post<{ data: Employee }>('/api/v1/employees', payload)
         const newEmployee = res.data
+
+        // El alta ya está hecha: lo metemos a la tabla ANTES de sincronizar las
+        // sucursales extra. Si esa parte falla y saliéramos por el catch general,
+        // el empleado quedaría creado pero invisible, y el reintento chocaría
+        // contra el índice único ("ya existe ese usuario") sobre una tabla que
+        // no lo muestra.
+        let extraBranches = form.branchAccess
         if (form.branchAccess.length > 0) {
-          await syncBranchAccess(newEmployee.id, form.branchAccess, [])
+          try {
+            await syncBranchAccess(newEmployee.id, form.branchAccess, [])
+          } catch (accessErr) {
+            extraBranches = []
+            setEmployees(prev => [...prev, { ...newEmployee, branches: [] }])
+            // El modal pasa a modo edición del empleado recién creado: así
+            // reintentar con Guardar sincroniza las sucursales en vez de
+            // intentar darlo de alta otra vez.
+            setEditEmployee({ ...newEmployee, branches: [] })
+            setError(
+              accessErr instanceof ApiError
+                ? `Se creó el empleado, pero no se pudo dar acceso a las otras sucursales: ${accessErr.message}. Edítalo para reintentar.`
+                : 'Se creó el empleado, pero no se pudo dar acceso a las otras sucursales. Edítalo para reintentar.'
+            )
+            return
+          }
         }
-        setEmployees(prev => [...prev, { ...newEmployee, branches: form.branchAccess.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })) }])
+        setEmployees(prev => [...prev, { ...newEmployee, branches: extraBranches.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })) }])
       } else if (editEmployee) {
         const emp = editEmployee as Employee
         const res = await api.put<{ data: Employee }>(`/api/v1/employees/${emp.id}`, payload)
@@ -746,7 +799,18 @@ export function EmployeesPage() {
                   {!isOwner && (
                     <select
                       value={form.role}
-                      onChange={e => setForm(f => ({ ...f, role: e.target.value as EmployeeRole }))}
+                      onChange={e => {
+                        const role = e.target.value as EmployeeRole
+                        setForm(f => ({
+                          ...f,
+                          role,
+                          // Un admin nuevo se asume para todas las sucursales
+                          // (se puede cambiar a "elegir sucursales" abajo).
+                          allBranchesMode: editEmployee === 'new' && role === EmployeeRole.ADMIN
+                            ? true
+                            : f.allBranchesMode,
+                        }))
+                      }}
                       className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]"
                     >
                       {rolesForPlan.map(r => (
@@ -813,17 +877,48 @@ export function EmployeesPage() {
                 {loadingBranchAccess ? (
                   <p className="text-xs text-[var(--color-text-muted)]">Cargando…</p>
                 ) : (
+                  <>
+                  {allBranches.length >= 2 && (
+                    <div className="mb-3">
+                      <div className="flex gap-1 p-1 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)]">
+                        {([true, false] as const).map(mode => (
+                          <button
+                            key={String(mode)}
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, allBranchesMode: mode }))}
+                            className={[
+                              'flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                              form.allBranchesMode === mode
+                                ? 'bg-[var(--color-accent)] text-white'
+                                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]',
+                            ].join(' ')}
+                          >
+                            {mode ? 'Todas las sucursales' : 'Elegir sucursales'}
+                          </button>
+                        ))}
+                      </div>
+                      {form.allBranchesMode && (
+                        <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+                          Tendrá el rol {ROLE_LABELS[form.role]} en las {allBranches.length} sucursales.
+                          Si después creas una sucursal nueva, hay que darle acceso aquí.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div className="space-y-2">
                     {allBranches.map(branch => {
                       const isCurrent = branch.id === branchId
                       const accessEntry = form.branchAccess.find(a => a.branchId === branch.id)
-                      const isChecked = isCurrent || !!accessEntry
+                      const isChecked = isCurrent || form.allBranchesMode || !!accessEntry
+                      // En "todas las sucursales" la lista es solo informativa:
+                      // se ve qué incluye, pero no se palomea una por una.
+                      const isLocked = isCurrent || form.allBranchesMode
 
                       function toggleBranch(checked: boolean) {
                         setForm(f => ({
                           ...f,
                           branchAccess: checked
-                            ? [...f.branchAccess, { branchId: branch.id, role: EmployeeRole.CASHIER }]
+                            ? [...f.branchAccess, { branchId: branch.id, role: f.role }]
                             : f.branchAccess.filter(a => a.branchId !== branch.id),
                         }))
                       }
@@ -843,18 +938,23 @@ export function EmployeesPage() {
                             type="checkbox"
                             id={`branch-${branch.id}`}
                             checked={isChecked}
-                            disabled={isCurrent}
+                            disabled={isLocked}
                             onChange={e => toggleBranch(e.target.checked)}
                             className="w-4 h-4 accent-[var(--color-accent)]"
                           />
                           <label
                             htmlFor={`branch-${branch.id}`}
-                            className={['flex-1 text-sm', isCurrent ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)] cursor-pointer'].join(' ')}
+                            className={['flex-1 text-sm', isLocked ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)] cursor-pointer'].join(' ')}
                           >
                             {branch.name}
                             {isCurrent && <span className="ml-1.5 text-[10px] text-[var(--color-accent)]">(actual)</span>}
                           </label>
-                          {isChecked && !isCurrent && (
+                          {form.allBranchesMode && !isCurrent && (
+                            <span className="text-xs text-[var(--color-text-muted)]">
+                              {ROLE_LABELS[form.role]}
+                            </span>
+                          )}
+                          {isChecked && !isLocked && (
                             <select
                               value={accessEntry?.role ?? EmployeeRole.CASHIER}
                               onChange={e => changeRole(e.target.value as EmployeeRole)}
@@ -869,6 +969,7 @@ export function EmployeesPage() {
                       )
                     })}
                   </div>
+                  </>
                 )}
               </div>
             )}
