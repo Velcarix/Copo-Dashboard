@@ -37,6 +37,23 @@ describe('ReportsPage', () => {
     })
   })
 
+  it('permite elegir un día exacto y moverse con las flechas', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+    await waitFor(() => screen.getByText('Un día'))
+    fireEvent.click(screen.getByText('Un día'))
+
+    const input = await screen.findByLabelText('Día') as HTMLInputElement
+    const today = input.value
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+
+    // No se puede avanzar más allá de hoy
+    expect(screen.getByLabelText('Día siguiente')).toBeDisabled()
+
+    fireEvent.click(screen.getByLabelText('Día anterior'))
+    await waitFor(() => expect(input.value).not.toBe(today))
+    expect(screen.getByLabelText('Día siguiente')).not.toBeDisabled()
+  })
+
   it('renders productos vendidos table with mock data on Ventas tab', async () => {
     render(<MemoryRouter><ReportsPage /></MemoryRouter>)
     await waitFor(() => {

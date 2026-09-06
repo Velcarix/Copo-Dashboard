@@ -127,6 +127,15 @@ function daysAgo(n: number): string {
   return isoDate(d)
 }
 
+/** Mueve una fecha 'YYYY-MM-DD' n días — sirve para las flechas ‹ › del modo día */
+function shiftDay(iso: string, delta: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + delta)
+  return isoDate(date)
+}
+
 const DATE_LABEL_FMT = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' })
 function humanDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
@@ -204,6 +213,7 @@ export function ReportsPage() {
   const [tab, setTab] = useState<Tab>('sales')
 
   // ── Selección de fechas: un día concreto o un rango ──
+  const today = isoDate(new Date())
   const [mode, setMode] = useState<RangeMode>('range')
   const [day, setDay] = useState(() => isoDate(new Date()))
   const [from, setFrom] = useState(() => daysAgo(6))
@@ -291,17 +301,17 @@ export function ReportsPage() {
   ]
 
   const PRESETS: { id: string; label: string; apply: () => void }[] = [
-    { id: 'today',     label: 'Hoy',      apply: () => { setMode('day');   setDay(isoDate(new Date())) } },
+    { id: 'today',     label: 'Hoy',      apply: () => { setMode('day');   setDay(today) } },
     { id: 'yesterday', label: 'Ayer',     apply: () => { setMode('day');   setDay(daysAgo(1)) } },
-    { id: '7d',        label: '7 días',   apply: () => { setMode('range'); setFrom(daysAgo(6));  setTo(isoDate(new Date())) } },
-    { id: '30d',       label: '30 días',  apply: () => { setMode('range'); setFrom(daysAgo(29)); setTo(isoDate(new Date())) } },
+    { id: '7d',        label: '7 días',   apply: () => { setMode('range'); setFrom(daysAgo(6));  setTo(today) } },
+    { id: '30d',       label: '30 días',  apply: () => { setMode('range'); setFrom(daysAgo(29)); setTo(today) } },
   ]
 
   const activePreset =
     mode === 'day'
-      ? (day === isoDate(new Date()) ? 'today' : day === daysAgo(1) ? 'yesterday' : null)
-      : to === isoDate(new Date()) && from === daysAgo(6) ? '7d'
-      : to === isoDate(new Date()) && from === daysAgo(29) ? '30d'
+      ? (day === today ? 'today' : day === daysAgo(1) ? 'yesterday' : null)
+      : to === today && from === daysAgo(6) ? '7d'
+      : to === today && from === daysAgo(29) ? '30d'
       : null
 
   const rangeLabel = mode === 'day'
@@ -315,6 +325,7 @@ export function ReportsPage() {
   const periodOrders = sumCount(salesDays)
 
   const dateInputClass = 'px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] min-h-[40px]'
+  const stepBtnClass = 'px-2.5 min-h-[40px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] text-lg leading-none transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-[var(--color-border)] disabled:hover:text-[var(--color-text-secondary)]'
 
   return (
     <div className="space-y-5">
@@ -330,7 +341,7 @@ export function ReportsPage() {
 
           {/* Día concreto vs rango de fechas */}
           <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden text-xs">
-            {([['day', 'Día'], ['range', 'Rango']] as const).map(([id, label]) => (
+            {([['day', 'Un día'], ['range', 'Rango']] as const).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -350,11 +361,31 @@ export function ReportsPage() {
 
         <div className="flex items-center gap-2 flex-wrap text-sm">
           {mode === 'day' ? (
-            <input
-              type="date" value={day} onChange={e => setDay(e.target.value)}
-              aria-label="Día"
-              className={dateInputClass}
-            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setDay(d => shiftDay(d, -1))}
+                aria-label="Día anterior"
+                className={stepBtnClass}
+              >
+                <span aria-hidden="true">‹</span>
+              </button>
+              <input
+                type="date" value={day} max={today}
+                onChange={e => { if (e.target.value) setDay(e.target.value) }}
+                aria-label="Día"
+                className={dateInputClass}
+              />
+              <button
+                type="button"
+                onClick={() => setDay(d => shiftDay(d, 1))}
+                disabled={day >= today}
+                aria-label="Día siguiente"
+                className={stepBtnClass}
+              >
+                <span aria-hidden="true">›</span>
+              </button>
+            </div>
           ) : (
             <>
               <input
