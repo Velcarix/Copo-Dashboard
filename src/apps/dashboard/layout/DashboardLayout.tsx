@@ -5,6 +5,7 @@ import { CopoLogo } from '@/shared/components/CopoLogo'
 import { LicenseStatusBanner } from '@/shared/components/LicenseStatusBanner'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
+import { canSelectAllBranches } from '@/shared/hooks/useDataViewBranch'
 import { api } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
 
@@ -21,15 +22,17 @@ const BRANCH_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
 // Fusiona lo que antes eran dos controles separados ("Sesión activa" para cambiar
 // de sucursal autenticada y "Vista de datos" para filtrar reportes) en un solo
 // dropdown: elegir una sucursal cambia ambas cosas a la vez, y "Todas las
-// sucursales" (solo OWNER) ajusta unicamente la vista de datos sin tocar la
-// sesión, ya que el backend no permite autenticarse como "todas" a la vez.
+// sucursales" ajusta unicamente la vista de datos sin tocar la sesión, ya que el
+// backend no permite autenticarse como "todas" a la vez.
 function SwitchBranchDropdown({ compact = false }: { compact?: boolean }) {
   const { availableBranches, branchId, user, updateAuthToken } = useAuthStore()
   const { selectedId, setSelected } = useBranchStore()
   const [open, setOpen] = useState(false)
   const [switching, setSwitching] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  const isOwner = user?.role === EmployeeRole.OWNER
+  // La vista consolidada ya no es exclusiva de OWNER: cualquier empleado con acceso
+  // a varias sucursales la ve, acotada por el backend a las suyas.
+  const canViewAll = canSelectAllBranches(user?.role, availableBranches.length)
   const isAll = selectedId === 'ALL'
 
   useEffect(() => {
@@ -108,7 +111,7 @@ function SwitchBranchDropdown({ compact = false }: { compact?: boolean }) {
 
       {open && (
         <div className={compact ? 'absolute left-0 top-full mt-1 z-50 min-w-[220px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden' : 'absolute left-3 right-3 top-full mt-1 z-50 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden'}>
-          {isOwner && (
+          {canViewAll && (
             <>
               <button
                 type="button"
@@ -252,12 +255,12 @@ export function DashboardLayout() {
 
   // "Vista de datos" persiste en localStorage entre sesiones — si apuntaba a una
   // sucursal a la que el empleado ya no tiene acceso (se la quitaron, cambió de
-  // negocio, etc.), o a 'ALL' sin ser OWNER (el backend solo permite la vista
-  // consolidada a OWNER), cae de vuelta a la sesión activa en vez de quedar en un
+  // negocio, etc.), o a 'ALL' sin poder pedir la vista consolidada (una sola
+  // sucursal y no es OWNER), cae de vuelta a la sesión activa en vez de quedar en un
   // estado roto silenciosamente (requests que siempre fallan con 403).
   useEffect(() => {
     if (availableBranches.length === 0) return
-    const isStaleAll = selectedId === 'ALL' && user?.role !== EmployeeRole.OWNER
+    const isStaleAll = selectedId === 'ALL' && !canSelectAllBranches(user?.role, availableBranches.length)
     const isUnknownBranch = selectedId !== 'ALL' && !availableBranches.some(b => b.id === selectedId)
     if (isStaleAll || isUnknownBranch) {
       setSelected(branchId ?? 'ALL')

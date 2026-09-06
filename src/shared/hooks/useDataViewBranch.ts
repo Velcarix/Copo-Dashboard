@@ -24,19 +24,29 @@ export function useSingleDataViewBranchId(): string | null {
  * `'all'` in lowercase, which is what the backend expects — plus `isAll` so the
  * screen can switch to its per-branch layout.
  *
- * Solo OWNER puede pedir 'all': su token es el único que representa realmente
- * todas las sucursales del negocio (ver requireAuth en el backend), así que para
- * el resto se cae a la sucursal de sesión en vez de provocar un 403 silencioso.
+ * Puede pedir 'all' cualquier empleado con acceso a más de una sucursal, no solo
+ * OWNER: el backend acota la vista consolidada al negocio y — cuando no es OWNER —
+ * a sus availableBranches (ver requireAuth y lib/branchScope.ts). Con una sola
+ * sucursal no hay nada que consolidar, así que se cae a la sesión activa en vez de
+ * provocar un 403 silencioso.
  */
 export function useDataViewBranchParam(): { branchParam: string | null; isAll: boolean } {
   const activeBranchId = useAuthStore(s => s.branchId)
-  const isOwner = useAuthStore(s => s.user?.role === EmployeeRole.OWNER)
+  const canViewAll = useAuthStore(s => canSelectAllBranches(s.user?.role, s.availableBranches?.length ?? 0))
   const selectedId = useBranchStore(s => s.selectedId)
 
   if (selectedId === 'ALL') {
-    return isOwner
+    return canViewAll
       ? { branchParam: 'all', isAll: true }
       : { branchParam: activeBranchId, isAll: false }
   }
   return { branchParam: selectedId ?? activeBranchId, isAll: false }
+}
+
+/**
+ * Quién ve la opción "Todas las sucursales" (Sesión activa) y puede consultar la
+ * vista consolidada. Debe coincidir con `isBranchAllowedForRequest` del backend.
+ */
+export function canSelectAllBranches(role: EmployeeRole | undefined, availableBranchCount: number): boolean {
+  return role === EmployeeRole.OWNER || availableBranchCount > 1
 }
