@@ -519,10 +519,32 @@ export function EmployeesPage() {
       if (editEmployee === 'new') {
         const res = await api.post<{ data: Employee }>('/api/v1/employees', payload)
         const newEmployee = res.data
+
+        // El alta ya está hecha: lo metemos a la tabla ANTES de sincronizar las
+        // sucursales extra. Si esa parte falla y saliéramos por el catch general,
+        // el empleado quedaría creado pero invisible, y el reintento chocaría
+        // contra el índice único ("ya existe ese usuario") sobre una tabla que
+        // no lo muestra.
+        let extraBranches = form.branchAccess
         if (form.branchAccess.length > 0) {
-          await syncBranchAccess(newEmployee.id, form.branchAccess, [])
+          try {
+            await syncBranchAccess(newEmployee.id, form.branchAccess, [])
+          } catch (accessErr) {
+            extraBranches = []
+            setEmployees(prev => [...prev, { ...newEmployee, branches: [] }])
+            // El modal pasa a modo edición del empleado recién creado: así
+            // reintentar con Guardar sincroniza las sucursales en vez de
+            // intentar darlo de alta otra vez.
+            setEditEmployee({ ...newEmployee, branches: [] })
+            setError(
+              accessErr instanceof ApiError
+                ? `Se creó el empleado, pero no se pudo dar acceso a las otras sucursales: ${accessErr.message}. Edítalo para reintentar.`
+                : 'Se creó el empleado, pero no se pudo dar acceso a las otras sucursales. Edítalo para reintentar.'
+            )
+            return
+          }
         }
-        setEmployees(prev => [...prev, { ...newEmployee, branches: form.branchAccess.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })) }])
+        setEmployees(prev => [...prev, { ...newEmployee, branches: extraBranches.map(a => ({ id: a.branchId, name: allBranches.find(b => b.id === a.branchId)?.name ?? a.branchId, role: a.role, isPrimary: false })) }])
       } else if (editEmployee) {
         const emp = editEmployee as Employee
         const res = await api.put<{ data: Employee }>(`/api/v1/employees/${emp.id}`, payload)
