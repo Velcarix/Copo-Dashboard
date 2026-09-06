@@ -399,7 +399,8 @@ export function DashboardLayout() {
                 <p className="text-sm font-semibold text-[var(--color-text-primary)]">Más opciones</p>
                 {user && <p className="text-[11px] text-[var(--color-text-muted)] truncate max-w-[45%]">{user.name}</p>}
               </div>
-              <SwitchBranchDropdown />
+              {/* El selector de sucursal vive solo en el header móvil (siempre visible):
+                  tenerlo también aquí duplicaba el mismo control en dos sitios. */}
               <div className="grid grid-cols-3 gap-1 px-3 pb-2">
                 {overflowItems.map(item => (
                   <NavLink

@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
 import { useCategoryStore } from '@/shared/store/categoryStore'
-import { useSingleDataViewBranchId } from '@/shared/hooks/useDataViewBranch'
+import { useDataViewBranchParam } from '@/shared/hooks/useDataViewBranch'
 import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SalesDay { day: string; total: number; count: number }
+interface BranchSeries { id: string; name: string; data: SalesDay[] }
 interface OrderItemRow { name: string; quantity: number }
-interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; paymentMethod: string; totalAmount: string; items?: OrderItemRow[] }
+interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; branchName?: string; paymentMethod: string; totalAmount: string; items?: OrderItemRow[] }
 interface ProductSoldRow { name: string; category: string; price: number; quantitySold: number }
 
 // Fallback label map — used when categoryStore hasn't loaded yet or is missing a key.
@@ -25,12 +26,16 @@ const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
   EXTRA:     'Extras',
 }
 
+// Un color por sucursal, en el mismo orden que usa Inicio y el selector de sucursal.
+const BRANCH_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
+
 function resolveCategoryLabel(key: string, allCats: { key: string; label: string }[]): string {
   return allCats.find(c => c.key === key)?.label ?? CATEGORY_LABEL_FALLBACK[key] ?? key
 }
 
 interface InventoryRow {
   name: string
+  branchName?: string
   unit: string
   openingStock: number
   purchased: number
@@ -51,6 +56,14 @@ const MOCK_SALES_DAYS: SalesDay[] = Array.from({ length: 7 }, (_, i) => {
   }
 })
 
+// Vista consolidada sin backend (DEV): una serie por sucursal, con los mismos
+// nombres que MOCK_BRANCHES del branchStore.
+const MOCK_BRANCH_SERIES: BranchSeries[] = ['Sucursal Centro', 'Sucursal Altabrisa', 'Sucursal Cancún'].map((name, i) => ({
+  id: `branch-${i + 1}`,
+  name,
+  data: MOCK_SALES_DAYS.map(d => ({ ...d, total: Math.round(d.total / (i + 2)), count: Math.round(d.count / (i + 2)) })),
+}))
+
 const MOCK_PRODUCTS_SOLD: ProductSoldRow[] = [
   { name: 'Malteada de vainilla', category: 'ICE_CREAM', price: 6500,  quantitySold: 34 },
   { name: 'Café americano',       category: 'COFFEE',    price: 3500,  quantitySold: 28 },
@@ -66,6 +79,8 @@ const MOCK_INVENTORY: InventoryRow[] = [
 ]
 
 // ─── Column configs ───────────────────────────────────────────────────────────
+
+const BRANCH_COLUMN = { key: 'branchName', label: 'Sucursal' }
 
 const ORDER_COLUMNS = [
   { key: 'orderNumber',  label: 'Orden'    },
@@ -97,14 +112,47 @@ const INVENTORY_COLUMNS = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type Tab = 'sales' | 'inventory'
+/** 'day' = un día concreto (gráfica por hora); 'range' = rango de fechas (gráfica por día) */
+type RangeMode = 'day' | 'range'
+
+/** 'YYYY-MM-DD' en hora local — `toISOString()` usa UTC y adelanta el día por la tarde */
+function isoDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function daysAgo(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return isoDate(d)
+}
+
+const DATE_LABEL_FMT = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' })
+function humanDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  return DATE_LABEL_FMT.format(new Date(y, m - 1, d))
+}
+
+const ORDER_DATE_FMT = new Intl.DateTimeFormat('es-MX', {
+  day: '2-digit', month: '2-digit', year: '2-digit',
+  hour: '2-digit', minute: '2-digit',
+})
+/** El backend manda instantes UTC; sin formatear, la tabla mostraba "…T20:41Z" (6 h adelantado) */
+function humanDateTime(value: string): string {
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? value : ORDER_DATE_FMT.format(d)
+}
 
 function formatInventoryRows(rows: InventoryRow[]): Record<string, string | number>[] {
-  return rows.map(r => ({ ...r, costOfGoods: formatCurrency(r.costOfGoods) }))
+  return rows.map(r => ({ ...r, branchName: r.branchName ?? '—', costOfGoods: formatCurrency(r.costOfGoods) }))
 }
 
 function formatOrderRows(rows: OrderRow[]): Record<string, string | number>[] {
   return rows.map(({ items, ...r }) => ({
     ...r,
+    branchName: r.branchName ?? '—',
+    createdAt: humanDateTime(r.createdAt),
     products: (items ?? []).map(i => i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name).join(', '),
     totalAmount: formatCurrency(Number(r.totalAmount)),
   }))
@@ -119,32 +167,57 @@ function formatProductRows(rows: ProductSoldRow[], categories: { key: string; la
   }))
 }
 
-/** Fills days with no sales in the range with zero values so the chart always draws a continuous line */
+/** Rellena con ceros los días sin ventas del rango para que la línea sea continua */
 function fillMissingDays(days: SalesDay[], from: string, to: string): SalesDay[] {
   const byDay = new Map(days.map(d => [d.day, d]))
   const result: SalesDay[] = []
   const cursor = new Date(`${from}T00:00:00`)
   const end = new Date(`${to}T00:00:00`)
   while (cursor <= end) {
-    const key = cursor.toISOString().slice(0, 10)
+    const key = isoDate(cursor)
     result.push(byDay.get(key) ?? { day: key, total: 0, count: 0 })
     cursor.setDate(cursor.getDate() + 1)
   }
   return result
 }
 
+/** Igual que fillMissingDays pero para las 24 horas de un solo día */
+function fillMissingHours(points: SalesDay[]): SalesDay[] {
+  const byHour = new Map(points.map(p => [p.day, p]))
+  return Array.from({ length: 24 }, (_, h) => {
+    const key = `${String(h).padStart(2, '0')}:00`
+    return byHour.get(key) ?? { day: key, total: 0, count: 0 }
+  })
+}
+
+function fillSeries(points: SalesDay[], from: string, to: string, mode: RangeMode): SalesDay[] {
+  return mode === 'day' ? fillMissingHours(points) : fillMissingDays(points, from, to)
+}
+
+function sumTotal(days: SalesDay[]): number { return days.reduce((s, d) => s + d.total, 0) }
+function sumCount(days: SalesDay[]): number { return days.reduce((s, d) => s + d.count, 0) }
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ReportsPage() {
-  const branchId = useSingleDataViewBranchId()
+  const { branchParam, isAll } = useDataViewBranchParam()
   const [tab, setTab] = useState<Tab>('sales')
 
-  const [from, setFrom] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0, 10)
-  })
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10))
+  // ── Selección de fechas: un día concreto o un rango ──
+  const [mode, setMode] = useState<RangeMode>('range')
+  const [day, setDay] = useState(() => isoDate(new Date()))
+  const [from, setFrom] = useState(() => daysAgo(6))
+  const [to, setTo] = useState(() => isoDate(new Date()))
+
+  // Si el usuario invierte el rango (from > to) se consulta igual en vez de
+  // devolver cero resultados sin explicación.
+  const [queryFrom, queryTo] = useMemo(() => {
+    if (mode === 'day') return [day, day]
+    return from <= to ? [from, to] : [to, from]
+  }, [mode, day, from, to])
 
   const [salesDays, setSalesDays] = useState<SalesDay[]>([])
+  const [branchSeries, setBranchSeries] = useState<BranchSeries[]>([])
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [ordersPage, setOrdersPage] = useState(1)
   const [ordersTotal, setOrdersTotal] = useState(0)
@@ -160,36 +233,54 @@ export function ReportsPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (branchId && categoriesBranchId !== branchId) loadCategories(branchId)
-  }, [branchId, categoriesBranchId, loadCategories])
+    // En vista consolidada no hay un branchId único de categorías: se usan las de
+    // la sesión activa, que pertenecen al mismo negocio.
+    if (!isAll && branchParam && categoriesBranchId !== branchParam) loadCategories(branchParam)
+  }, [isAll, branchParam, categoriesBranchId, loadCategories])
+
+  // Cambiar de sucursal, de fechas o de pestaña invalida la paginación: quedarse
+  // en la página 5 de un filtro nuevo mostraba una tabla vacía.
+  useEffect(() => { setOrdersPage(1) }, [branchParam, queryFrom, queryTo, tab])
 
   const load = useCallback(() => {
     setLoading(true)
+    const scope = `branchId=${branchParam}&from=${queryFrom}&to=${queryTo}`
     if (tab === 'sales') {
       Promise.all([
-        api.get<{ data: { data: SalesDay[] } }>(`/api/v1/reports/sales?branchId=${branchId}&from=${from}&to=${to}&groupBy=day`),
-        api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?branchId=${branchId}&from=${from}&to=${to}&page=${ordersPage}&limit=20`),
-        api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?branchId=${branchId}&from=${from}&to=${to}`),
+        api.get<{ data: { data: SalesDay[]; branches?: BranchSeries[] } }>(
+          `/api/v1/reports/sales?${scope}&groupBy=${mode === 'day' ? 'hour' : 'day'}`,
+        ),
+        api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?${scope}&page=${ordersPage}&limit=20`),
+        api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?${scope}`),
       ])
         .then(([salesRes, ordersRes, productsRes]) => {
-          setSalesDays(fillMissingDays(salesRes.data.data, from, to))
+          setSalesDays(fillSeries(salesRes.data.data ?? [], queryFrom, queryTo, mode))
+          setBranchSeries(
+            (salesRes.data.branches ?? []).map(b => ({
+              ...b,
+              data: fillSeries(b.data ?? [], queryFrom, queryTo, mode),
+            })),
+          )
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
           setProductsSold(Array.isArray(productsRes.data) ? productsRes.data : [])
         })
         .catch(() => {
-          if (import.meta.env.DEV) { setSalesDays(MOCK_SALES_DAYS); setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD) }
+          if (import.meta.env.DEV) {
+            setSalesDays(MOCK_SALES_DAYS); setBranchSeries(isAll ? MOCK_BRANCH_SERIES : [])
+            setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD)
+          }
         })
         .finally(() => setLoading(false))
     } else {
-      api.get<{ data: InventoryRow[] }>(`/api/v1/reports/inventory?branchId=${branchId}&from=${from}&to=${to}`)
+      api.get<{ data: InventoryRow[] }>(`/api/v1/reports/inventory?${scope}`)
         .then(res => setInventory(Array.isArray(res.data) ? res.data : []))
         .catch(() => { if (import.meta.env.DEV) setInventory(MOCK_INVENTORY) })
         .finally(() => setLoading(false))
     }
-    // branchId (Vista de datos) faltaba en las dependencias — cambiar de sucursal
+    // branchParam (Vista de datos) faltaba en las dependencias — cambiar de sucursal
     // no refrescaba reportes/órdenes/inventario hasta cambiar tab/fechas.
-  }, [tab, from, to, ordersPage, branchId])
+  }, [tab, queryFrom, queryTo, mode, ordersPage, branchParam, isAll])
 
   useEffect(load, [load])
   useVisibilityRefetch(load)
@@ -199,21 +290,104 @@ export function ReportsPage() {
     { id: 'inventory', label: 'Inventario' },
   ]
 
+  const PRESETS: { id: string; label: string; apply: () => void }[] = [
+    { id: 'today',     label: 'Hoy',      apply: () => { setMode('day');   setDay(isoDate(new Date())) } },
+    { id: 'yesterday', label: 'Ayer',     apply: () => { setMode('day');   setDay(daysAgo(1)) } },
+    { id: '7d',        label: '7 días',   apply: () => { setMode('range'); setFrom(daysAgo(6));  setTo(isoDate(new Date())) } },
+    { id: '30d',       label: '30 días',  apply: () => { setMode('range'); setFrom(daysAgo(29)); setTo(isoDate(new Date())) } },
+  ]
+
+  const activePreset =
+    mode === 'day'
+      ? (day === isoDate(new Date()) ? 'today' : day === daysAgo(1) ? 'yesterday' : null)
+      : to === isoDate(new Date()) && from === daysAgo(6) ? '7d'
+      : to === isoDate(new Date()) && from === daysAgo(29) ? '30d'
+      : null
+
+  const rangeLabel = mode === 'day'
+    ? humanDate(day)
+    : `${humanDate(queryFrom)} – ${humanDate(queryTo)}`
+
+  const orderColumns   = isAll ? [BRANCH_COLUMN, ...ORDER_COLUMNS] : ORDER_COLUMNS
+  const inventoryColumns = isAll ? [INVENTORY_COLUMNS[0], BRANCH_COLUMN, ...INVENTORY_COLUMNS.slice(1)] : INVENTORY_COLUMNS
+
+  const periodTotal  = sumTotal(salesDays)
+  const periodOrders = sumCount(salesDays)
+
+  const dateInputClass = 'px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] min-h-[40px]'
+
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Reportes</h1>
-        <div className="flex items-center gap-2 text-sm">
-          <input
-            type="date" value={from} onChange={e => setFrom(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)]"
-          />
-          <span className="text-[var(--color-text-muted)]">—</span>
-          <input
-            type="date" value={to} onChange={e => setTo(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)]"
-          />
+      <div className="space-y-3">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Reportes</h1>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              {isAll ? 'Todas las sucursales' : 'Sucursal seleccionada'} · {rangeLabel}
+            </p>
+          </div>
+
+          {/* Día concreto vs rango de fechas */}
+          <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden text-xs">
+            {([['day', 'Día'], ['range', 'Rango']] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                aria-pressed={mode === id}
+                className={`px-3 py-2 min-h-[40px] transition-colors ${
+                  mode === id
+                    ? 'bg-[var(--color-accent)] text-white font-medium'
+                    : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-border)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          {mode === 'day' ? (
+            <input
+              type="date" value={day} onChange={e => setDay(e.target.value)}
+              aria-label="Día"
+              className={dateInputClass}
+            />
+          ) : (
+            <>
+              <input
+                type="date" value={from} onChange={e => setFrom(e.target.value)}
+                aria-label="Desde"
+                className={dateInputClass}
+              />
+              <span className="text-[var(--color-text-muted)]">—</span>
+              <input
+                type="date" value={to} onChange={e => setTo(e.target.value)}
+                aria-label="Hasta"
+                className={dateInputClass}
+              />
+            </>
+          )}
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {PRESETS.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={p.apply}
+                aria-pressed={activePreset === p.id}
+                className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                  activePreset === p.id
+                    ? 'border-[var(--color-accent)] text-[var(--color-accent)] font-medium'
+                    : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -244,27 +418,70 @@ export function ReportsPage() {
           {/* ── Sales tab ─── */}
           {tab === 'sales' && (
             <div className="space-y-5">
-              <SalesChart data={salesDays} groupBy="day" />
+              <SalesChart
+                data={salesDays}
+                groupBy="day"
+                title={
+                  mode === 'day'
+                    ? (isAll ? 'Ventas por hora — todas las sucursales' : 'Ventas por hora')
+                    : (isAll ? 'Ventas por día — todas las sucursales' : 'Ventas por día')
+                }
+                subtitle={formatCurrency(periodTotal)}
+              />
+
+              {/* Una gráfica por sucursal en la vista consolidada */}
+              {isAll && (
+                <div className="space-y-3">
+                  <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Ventas por sucursal</h2>
+                  {branchSeries.length === 0 ? (
+                    <p className="text-center py-8 text-[var(--color-text-muted)] text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl">
+                      Sin sucursales con ventas en el período
+                    </p>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {branchSeries.map((b, i) => (
+                        <SalesChart
+                          key={b.id}
+                          data={b.data}
+                          groupBy="day"
+                          title={b.name}
+                          subtitle={`${formatCurrency(sumTotal(b.data))} · ${sumCount(b.data)} órd.`}
+                          color={BRANCH_COLORS[i % BRANCH_COLORS.length]}
+                          height={160}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {salesDays.length > 0 && (
-                <div className="grid grid-cols-2 gap-3 text-sm bg-[var(--color-surface)] rounded-2xl p-4 border border-[var(--color-border)]">
+                <div className={`grid ${isAll ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'} gap-3 text-sm bg-[var(--color-surface)] rounded-2xl p-4 border border-[var(--color-border)]`}>
                   <div>
                     <p className="text-[var(--color-text-muted)] text-xs uppercase tracking-wide">Total período</p>
-                    <p className="font-bold text-[var(--color-text-primary)] text-lg">
-                      {formatCurrency(salesDays.reduce((s, d) => s + d.total, 0))}
+                    <p className="font-bold text-[var(--color-text-primary)] text-lg tabular-nums">
+                      {formatCurrency(periodTotal)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[var(--color-text-muted)] text-xs uppercase tracking-wide">Órdenes</p>
-                    <p className="font-bold text-[var(--color-text-primary)] text-lg">
-                      {salesDays.reduce((s, d) => s + d.count, 0)}
+                    <p className="font-bold text-[var(--color-text-primary)] text-lg tabular-nums">
+                      {periodOrders}
                     </p>
                   </div>
+                  {isAll && (
+                    <div>
+                      <p className="text-[var(--color-text-muted)] text-xs uppercase tracking-wide">Sucursales</p>
+                      <p className="font-bold text-[var(--color-text-primary)] text-lg tabular-nums">
+                        {branchSeries.length}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
               <ReportTable
-                columns={ORDER_COLUMNS}
+                columns={orderColumns}
                 data={formatOrderRows(orders)}
                 total={ordersTotal}
                 page={ordersPage}
@@ -294,21 +511,21 @@ export function ReportsPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-3">
                       <p className="text-xs text-[var(--color-text-muted)] mb-1">Ingredientes</p>
-                      <p className="text-lg font-bold text-[var(--color-text-primary)]">{inventory.length}</p>
+                      <p className="text-lg font-bold text-[var(--color-text-primary)] tabular-nums">{inventory.length}</p>
                     </div>
                     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-3">
                       <p className="text-xs text-[var(--color-text-muted)] mb-1">Merma total</p>
-                      <p className="text-lg font-bold text-amber-500">{inventory.reduce((s, r) => s + r.waste, 0)}</p>
+                      <p className="text-lg font-bold text-amber-500 tabular-nums">{inventory.reduce((s, r) => s + r.waste, 0)}</p>
                     </div>
                     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-3">
                       <p className="text-xs text-[var(--color-text-muted)] mb-1">Costo MP</p>
-                      <p className="text-lg font-bold text-[var(--color-text-primary)]">
+                      <p className="text-lg font-bold text-[var(--color-text-primary)] tabular-nums">
                         {formatCurrency(inventory.reduce((s, r) => s + r.costOfGoods, 0))}
                       </p>
                     </div>
                   </div>
                   <ReportTable
-                    columns={INVENTORY_COLUMNS}
+                    columns={inventoryColumns}
                     data={formatInventoryRows(inventory)}
                     total={inventory.length}
                     page={1}

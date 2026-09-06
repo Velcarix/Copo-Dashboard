@@ -34,7 +34,16 @@ if (import.meta.env.DEV) {
       canSkipShiftClose: true,
     },
     'branch-1',
+    // Sin sucursales el switcher se oculta y no se puede probar en local ni la
+    // vista consolidada ni el cambio de sucursal. Mismos ids que MOCK_BRANCHES.
+    [
+      { id: 'branch-1', name: 'Sucursal Centro',    role: EmployeeRole.OWNER },
+      { id: 'branch-2', name: 'Sucursal Altabrisa', role: EmployeeRole.OWNER },
+      { id: 'branch-3', name: 'Sucursal Cancún',    role: EmployeeRole.OWNER },
+    ],
   )
+  const { useBranchStore, MOCK_BRANCHES } = await import('./shared/store/branchStore')
+  if (useBranchStore.getState().branches.length === 0) useBranchStore.getState().setBranches(MOCK_BRANCHES)
   // NOTE: no setShift — mode selector routes to pos/shift/open if needed
 }
 
