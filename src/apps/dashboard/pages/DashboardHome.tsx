@@ -36,6 +36,9 @@ interface DashboardData {
   lowStockItems: { name: string; currentStock: number; minStock: number }[]
   salesChart: { label: string; total: number; count: number }[]
   branchSalesChart: { label: string; [k: string]: number | string }[]
+  // Totales reales por sucursal en la vista consolidada — presentes solo cuando
+  // el backend los manda (branchId=all). Su suma cuadra con totalSales/ordersCount.
+  branchTotals?: { branchId: string; name: string; total: number; orders: number }[]
   topProducts: { name: string; revenue: number; units: number }[]
   salesByMethod: { method: string; total: number; count: number }[]
   salesByCategory: { category: string; total: number }[]
@@ -155,6 +158,29 @@ export function DashboardHome() {
   }
 
   const activeBranches = branches.filter(b => b.isActive)
+
+  // Desglose real por sucursal para las tarjetas "Info por sucursal".
+  // Fuente preferida: `branchTotals` del backend (ventas + órdenes por sucursal).
+  // Si el backend desplegado todavía no manda esa clave, se suma la columna de la
+  // sucursal en `branchSalesChart` — el mismo dato de ventas, sin conteo de órdenes.
+  // Nunca se estima ni se reparte el total entre sucursales: la suma de las
+  // tarjetas cuadra con "Ventas" del período y con lo que muestra cada sucursal
+  // seleccionada por separado.
+  const branchTotalsApi = data?.branchTotals ?? []
+  const hasBranchBreakdown = branchTotalsApi.length > 0 || (data?.branchSalesChart?.length ?? 0) > 0
+  const branchBreakdown = hasBranchBreakdown
+    ? activeBranches.map((branch, i) => {
+        const fromApi = branchTotalsApi.find(t => t.branchId === branch.id)
+        if (fromApi) {
+          return { branch, i, total: fromApi.total, orders: fromApi.orders as number | null }
+        }
+        const total = (data?.branchSalesChart ?? []).reduce((sum, row) => {
+          const v = row[branch.name]
+          return sum + (typeof v === 'number' ? v : 0)
+        }, 0)
+        return { branch, i, total, orders: null as number | null }
+      })
+    : []
 
   function handleExport() {
     if (!data) return
@@ -500,36 +526,30 @@ export function DashboardHome() {
       </div>
 
       {/* ── Branch info cards (global only) ── */}
-      {isGlobal && activeBranches.length > 1 && (
+      {isGlobal && activeBranches.length > 1 && branchBreakdown.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
             Info por sucursal
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {activeBranches.map((branch, i) => {
-              const branchTotal = Math.floor(
-                ((data?.totalSales ?? 0) / activeBranches.length) * (0.8 + Math.random() * 0.4),
-              )
-              const branchOrders = Math.floor(
-                ((data?.ordersCount ?? 0) / activeBranches.length) * (0.8 + Math.random() * 0.4),
-              )
-              return (
-                <div
-                  key={branch.id}
-                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3"
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ background: BRANCH_COLORS[i % BRANCH_COLORS.length] }}
-                    />
-                    <span className="text-xs font-bold text-[var(--color-text-primary)] truncate">{branch.name}</span>
-                  </div>
-                  <p className="text-base font-bold text-[var(--color-text-primary)]">{formatCurrency(branchTotal)}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">{branchOrders} órdenes · {branch.city}</p>
+            {branchBreakdown.map(({ branch, i, total, orders }) => (
+              <div
+                key={branch.id}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: BRANCH_COLORS[i % BRANCH_COLORS.length] }}
+                  />
+                  <span className="text-xs font-bold text-[var(--color-text-primary)] truncate">{branch.name}</span>
                 </div>
-              )
-            })}
+                <p className="text-base font-bold text-[var(--color-text-primary)]">{formatCurrency(total)}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {orders !== null ? `${orders} órdenes · ` : ''}{branch.city}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       )}

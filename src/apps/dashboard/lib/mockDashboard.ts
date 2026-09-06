@@ -57,6 +57,15 @@ export function getMockData(
     return entry
   })
 
+  // Totales por sucursal derivados de branchSalesChart — el mock no reparte el
+  // total al azar: las tarjetas "Info por sucursal" cuadran con la gráfica.
+  const branchTotals = activeBranches.map(b => ({
+    branchId: b.id,
+    name: b.name,
+    total: branchSalesChart.reduce((s, row) => s + (typeof row[b.name] === 'number' ? (row[b.name] as number) : 0), 0),
+    orders: Math.floor(salesChart.reduce((s, p) => s + p.count, 0) / Math.max(activeBranches.length, 1)),
+  }))
+
   return {
     totalSales,
     avgTicket: Math.round(totalSales / ordersCount),
@@ -69,6 +78,7 @@ export function getMockData(
     ],
     salesChart,
     branchSalesChart,
+    branchTotals,
     topProducts: [
       { name: 'Copa Esp. Vainilla',   revenue: 164_500, units: 47 },
       { name: 'Café Americano',       revenue: 132_000, units: 33 },

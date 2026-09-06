@@ -1,8 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { DashboardHome } from '@/apps/dashboard/pages/DashboardHome'
 import { api } from '@/shared/lib/api'
+import { useBranchStore } from '@/shared/store/branchStore'
 
 vi.mock('@/shared/lib/api', () => ({
   api: { get: vi.fn().mockRejectedValue(new Error('no backend')) },
@@ -52,5 +53,62 @@ describe('DashboardHome', () => {
     expect(screen.getByText('Top sabores (unidades)')).toBeInTheDocument()
     expect(screen.getByText('Extras')).toBeInTheDocument()
     expect(screen.getByText('Hot cheetos')).toBeInTheDocument()
+  })
+
+  // Regresión: las tarjetas "Info por sucursal" mostraban totalSales repartido
+  // entre sucursales con un factor Math.random() — nunca cuadraban con el total
+  // del período ni con la vista de cada sucursal, y cambiaban en cada render.
+  describe('Info por sucursal (vista consolidada)', () => {
+    const BRANCHES = [
+      { id: 'b1', name: 'Francisco de Montejo', city: 'Mérida', isActive: true },
+      { id: 'b2', name: 'Gran Plaza',           city: 'Mérida', isActive: true },
+      { id: 'b3', name: 'Las americas',         city: 'Mérida', isActive: true },
+    ]
+    const GLOBAL_DATA = {
+      ...BASE_DATA,
+      totalSales: 919_100,
+      ordersCount: 74,
+      branchSalesChart: [
+        { label: '10h', 'Francisco de Montejo': 100_000, 'Gran Plaza':  76_500, 'Las americas': 200_000 },
+        { label: '11h', 'Francisco de Montejo': 147_100, 'Gran Plaza': 100_000, 'Las americas': 295_500 },
+      ],
+      branchTotals: [
+        { branchId: 'b1', name: 'Francisco de Montejo', total: 247_100, orders: 12 },
+        { branchId: 'b2', name: 'Gran Plaza',           total: 176_500, orders: 16 },
+        { branchId: 'b3', name: 'Las americas',         total: 495_500, orders: 46 },
+      ],
+    }
+
+    beforeEach(() => {
+      useBranchStore.setState({ branches: BRANCHES, selectedId: 'ALL' })
+    })
+
+    it('muestra los totales reales por sucursal y su suma cuadra con las ventas del período', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: GLOBAL_DATA })
+      render(<MemoryRouter><DashboardHome /></MemoryRouter>)
+
+      expect(await screen.findByText('Info por sucursal')).toBeInTheDocument()
+      expect(screen.getByText('$2,471.00')).toBeInTheDocument()
+      expect(screen.getByText('$1,765.00')).toBeInTheDocument()
+      expect(screen.getByText('$4,955.00')).toBeInTheDocument()
+      expect(screen.getByText(/12 órdenes/)).toBeInTheDocument()
+      expect(screen.getByText(/16 órdenes/)).toBeInTheDocument()
+      expect(screen.getByText(/46 órdenes/)).toBeInTheDocument()
+
+      const sum = GLOBAL_DATA.branchTotals.reduce((s, b) => s + b.total, 0)
+      expect(sum).toBe(GLOBAL_DATA.totalSales)
+    })
+
+    it('cae a branchSalesChart (sin conteo de órdenes) si el backend no manda branchTotals', async () => {
+      const { branchTotals: _omit, ...withoutTotals } = GLOBAL_DATA
+      vi.mocked(api.get).mockResolvedValue({ data: withoutTotals })
+      render(<MemoryRouter><DashboardHome /></MemoryRouter>)
+
+      expect(await screen.findByText('Info por sucursal')).toBeInTheDocument()
+      expect(screen.getByText('$2,471.00')).toBeInTheDocument()
+      expect(screen.getByText('$1,765.00')).toBeInTheDocument()
+      expect(screen.getByText('$4,955.00')).toBeInTheDocument()
+      expect(screen.queryByText(/órdenes/)).not.toBeInTheDocument()
+    })
   })
 })
