@@ -3,6 +3,7 @@ import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
+import { ProductMixPanels, type ProductMix } from '../components/ProductMixPanels'
 import { useCategoryStore } from '@/shared/store/categoryStore'
 import { useDataViewBranchParam } from '@/shared/hooks/useDataViewBranch'
 import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
@@ -69,6 +70,21 @@ const MOCK_PRODUCTS_SOLD: ProductSoldRow[] = [
   { name: 'Café americano',       category: 'COFFEE',    price: 3500,  quantitySold: 28 },
   { name: 'Pay de queso',         category: 'PASTRY',    price: 5500,  quantitySold: 12 },
 ]
+
+// Mismos paneles que Inicio, con datos de ejemplo para trabajar sin backend (DEV).
+const MOCK_MIX: ProductMix = {
+  topProducts: MOCK_PRODUCTS_SOLD.map(p => ({ name: p.name, revenue: p.price * p.quantitySold, units: p.quantitySold })),
+  salesByCategory: [
+    { category: 'Helados', total: 221000 },
+    { category: 'Cafés',   total: 98000  },
+    { category: 'Pasteles', total: 66000 },
+  ],
+  topFlavors: [
+    { name: 'Vainilla', units: 34 },
+    { name: 'Chocolate', units: 21 },
+    { name: 'Fresa', units: 12 },
+  ],
+}
 
 const MOCK_INVENTORY: InventoryRow[] = [
   { name: 'Vainilla',     unit: 'grams',  openingStock: 4000, purchased: 0,    consumed: 3200, waste: 0,   closingStock: 800,  costOfGoods: 19200 },
@@ -235,6 +251,9 @@ export function ReportsPage() {
   const [inventory, setInventory] = useState<InventoryRow[]>([])
 
   const [productsSold, setProductsSold] = useState<ProductSoldRow[]>([])
+  // Top de productos, categorías, variantes, sabores y extras del rango — las
+  // mismas agregaciones que muestra Inicio, aquí para las fechas elegidas.
+  const [mix, setMix] = useState<ProductMix>({})
 
   const categories = useCategoryStore(s => s.categories)
   const categoriesBranchId = useCategoryStore(s => s.branchId)
@@ -262,8 +281,11 @@ export function ReportsPage() {
         ),
         api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?${scope}&page=${ordersPage}&limit=20`),
         api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?${scope}`),
+        // Un backend sin /reports/mix desplegado no debe tumbar el resto de la
+        // pestaña: los paneles simplemente no se dibujan.
+        api.get<{ data: ProductMix }>(`/api/v1/reports/mix?${scope}`).catch(() => ({ data: {} as ProductMix })),
       ])
-        .then(([salesRes, ordersRes, productsRes]) => {
+        .then(([salesRes, ordersRes, productsRes, mixRes]) => {
           setSalesDays(fillSeries(salesRes.data.data ?? [], queryFrom, queryTo, mode))
           setBranchSeries(
             (salesRes.data.branches ?? []).map(b => ({
@@ -274,11 +296,13 @@ export function ReportsPage() {
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
           setProductsSold(Array.isArray(productsRes.data) ? productsRes.data : [])
+          setMix(mixRes.data ?? {})
         })
         .catch(() => {
           if (import.meta.env.DEV) {
             setSalesDays(MOCK_SALES_DAYS); setBranchSeries(isAll ? MOCK_BRANCH_SERIES : [])
             setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD)
+            setMix(MOCK_MIX)
           }
         })
         .finally(() => setLoading(false))
@@ -510,6 +534,9 @@ export function ReportsPage() {
                   )}
                 </div>
               )}
+
+              {/* Qué se vendió en el rango — mismos paneles que Inicio */}
+              <ProductMixPanels {...mix} />
 
               <ReportTable
                 columns={orderColumns}

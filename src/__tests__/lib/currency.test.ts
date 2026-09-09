@@ -1,6 +1,6 @@
 // frontend/src/__tests__/lib/currency.test.ts
 import { describe, it, expect } from 'vitest'
-import { formatCurrency, centsToPesos, pesosToCents } from '@/shared/lib/currency'
+import { formatCurrency, centsToPesos, pesosToCents, formatChartAxis } from '@/shared/lib/currency'
 
 describe('formatCurrency', () => {
   it('formats 3500 cents as $35.00', () => {
@@ -29,5 +29,20 @@ describe('pesosToCents', () => {
   })
   it('converts 35.50 to 3550', () => {
     expect(pesosToCents(35.5)).toBe(3550)
+  })
+})
+
+describe('formatChartAxis', () => {
+  it('deja los montos menores a $1,000 en pesos enteros', () => {
+    expect(formatChartAxis(0)).toBe('$0')
+    expect(formatChartAxis(25000)).toBe('$250')
+    expect(formatChartAxis(99900)).toBe('$999')
+  })
+  it('usa un decimal debajo de $10k para no repetir etiquetas de eje', () => {
+    expect(formatChartAxis(180000)).toBe('$1.8k')
+    expect(formatChartAxis(240000)).toBe('$2.4k')
+  })
+  it('redondea a entero a partir de $10k', () => {
+    expect(formatChartAxis(1_500_000)).toBe('$15k')
   })
 })

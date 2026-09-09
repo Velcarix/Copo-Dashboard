@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/shared/lib/api'
-import { formatCurrency } from '@/shared/lib/currency'
+import { formatCurrency, formatChartAxis } from '@/shared/lib/currency'
 import { exportDashboardToExcel } from '@/shared/lib/exportExcel'
 import { MetricCard } from '../components/MetricCard'
+import { ProductMixPanels } from '../components/ProductMixPanels'
 import { InventoryAlert } from '../components/InventoryAlert'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { BranchBadge } from '@/shared/components/BranchSelector'
@@ -11,8 +12,7 @@ import {
   ResponsiveContainer,
   AreaChart, Area,
   LineChart, Line,
-  BarChart, Bar,
-  XAxis, YAxis, Tooltip, CartesianGrid, Cell,
+  XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts'
 
 type Period = 'today' | 'week' | 'month' | 'year'
@@ -75,12 +75,6 @@ const PERIOD_TARGET_LABEL: Record<Period, string> = {
   week:  'Meta semanal',
   month: 'Meta mensual',
   year:  'Meta anual',
-}
-
-function chartFmt(v: number) {
-  return v >= 100_000
-    ? `$${(v / 100_000).toFixed(0)}k`
-    : `$${(v / 100).toFixed(0)}`
 }
 
 export function DashboardHome() {
@@ -326,7 +320,7 @@ export function DashboardHome() {
             >
               <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} />
-              <YAxis tickFormatter={chartFmt} tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} width={50} />
+              <YAxis tickFormatter={formatChartAxis} tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} width={50} />
               <Tooltip formatter={(v: number) => formatCurrency(v)} />
               {activeBranches.map((b, i) => (
                 <Line
@@ -352,7 +346,7 @@ export function DashboardHome() {
               </defs>
               <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} />
-              <YAxis tickFormatter={chartFmt} tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} width={50} />
+              <YAxis tickFormatter={formatChartAxis} tick={{ fontSize: 10, fill: 'var(--color-text-muted)' }} width={50} />
               <Tooltip formatter={(v: number) => formatCurrency(v)} />
               <Area
                 type="monotone"
@@ -366,107 +360,15 @@ export function DashboardHome() {
         </ResponsiveContainer>
       </div>
 
-      {/* ── Top products + Sales by category ── */}
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
-          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-            Top 10 productos por ingreso
-          </p>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart
-              layout="vertical"
-              data={data?.topProducts?.slice(0, 10) ?? []}
-              margin={{ top: 0, right: 10, bottom: 0, left: 0 }}
-            >
-              <XAxis type="number" tickFormatter={chartFmt} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-              <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Bar dataKey="revenue" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
-          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-            Ventas por categoría
-          </p>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart
-              layout="vertical"
-              data={data?.salesByCategory ?? []}
-              margin={{ top: 0, right: 10, bottom: 0, left: 0 }}
-            >
-              <XAxis type="number" tickFormatter={chartFmt} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-              <YAxis type="category" dataKey="category" width={70} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                {(data?.salesByCategory ?? []).map((_, i) => (
-                  <Cell key={i} fill={BRANCH_COLORS[i % BRANCH_COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* ── Mix por variante / Top sabores (solo si el catálogo usa VARIANTS/PRESENTATION) ── */}
-      {((data?.byVariant?.length ?? 0) > 0 || (data?.topFlavors?.length ?? 0) > 0) && (
-        <div className="grid md:grid-cols-2 gap-4">
-          {(data?.byVariant?.length ?? 0) > 0 && (
-            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
-              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-                Mix por variante
-              </p>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart layout="vertical" data={data!.byVariant} margin={{ top: 0, right: 10, bottom: 0, left: 0 }}>
-                  <XAxis type="number" tickFormatter={chartFmt} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-                  <YAxis type="category" dataKey="variantName" width={90} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Bar dataKey="revenue" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {(data?.topFlavors?.length ?? 0) > 0 && (
-            <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
-              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
-                Top sabores (unidades)
-              </p>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart layout="vertical" data={data!.topFlavors} margin={{ top: 0, right: 10, bottom: 0, left: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }} />
-                  <Tooltip formatter={(v: number) => `${v} unidades`} />
-                  <Bar dataKey="units" fill="#10b981" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Extras (attach rate + top extras con precio) ── */}
-      {data?.extras && data.extras.top.length > 0 && (
-        <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Extras</p>
-            <span className="text-xs text-[var(--color-text-secondary)]">
-              Attach rate: <strong className="text-[var(--color-text-primary)]">{Math.round(data.extras.attachRate * 100)}%</strong>
-            </span>
-          </div>
-          <div className="space-y-2">
-            {data.extras.top.map(e => (
-              <div key={e.name} className="flex items-center justify-between text-xs">
-                <span className="text-[var(--color-text-secondary)]">{e.name}</span>
-                <span className="text-[var(--color-text-muted)]">
-                  {e.units} u. · <strong className="text-[var(--color-text-primary)]">{formatCurrency(e.revenue)}</strong>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ── Qué se vendió: productos, categorías, variantes, sabores y extras ──
+          Los mismos paneles que la pestaña Ventas de Reportes (ProductMixPanels). */}
+      <ProductMixPanels
+        topProducts={data?.topProducts}
+        salesByCategory={data?.salesByCategory}
+        byVariant={data?.byVariant}
+        topFlavors={data?.topFlavors}
+        extras={data?.extras}
+      />
 
       {/* ── Sales by payment method ── */}
       <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-4">

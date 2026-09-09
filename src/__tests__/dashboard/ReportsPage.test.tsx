@@ -1,7 +1,8 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { ReportsPage } from '@/apps/dashboard/pages/ReportsPage'
+import { api } from '@/shared/lib/api'
 
 vi.mock('@/shared/lib/api', () => ({
   api: { get: vi.fn().mockRejectedValue(new Error('no backend')) },
@@ -14,6 +15,9 @@ vi.mock('@/shared/lib/api', () => ({
 }))
 
 describe('ReportsPage', () => {
+  // Por defecto no hay backend y la página cae a los mocks de DEV.
+  afterEach(() => { vi.mocked(api.get).mockRejectedValue(new Error('no backend')) })
+
   it('renders page heading', async () => {
     render(<MemoryRouter><ReportsPage /></MemoryRouter>)
     await waitFor(() => expect(screen.getByText(/reportes/i)).toBeInTheDocument())
@@ -61,5 +65,35 @@ describe('ReportsPage', () => {
       expect(screen.getByText('Malteada de vainilla')).toBeInTheDocument()
       expect(screen.getByText('Vendidos')).toBeInTheDocument()
     })
+  })
+
+  it('muestra los paneles de mix — los mismos que Inicio — en la pestaña Ventas', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+    await waitFor(() => {
+      expect(screen.getByText('Top 10 productos por ingreso')).toBeInTheDocument()
+      expect(screen.getByText('Ventas por categoría')).toBeInTheDocument()
+      expect(screen.getByText('Top sabores (unidades)')).toBeInTheDocument()
+    })
+  })
+
+  it('pide el mix al rango de fechas seleccionado', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/reports/mix')) {
+        return { data: { topProducts: [{ name: 'Cono especial', revenue: 12345, units: 3 }], salesByCategory: [] } }
+      }
+      if (url.includes('/orders')) return { data: [], total: 0 }
+      return { data: [] }
+    })
+
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+
+    await waitFor(() => {
+      const mixCall = vi.mocked(api.get).mock.calls.map(c => String(c[0])).find(u => u.includes('/reports/mix'))
+      expect(mixCall).toMatch(/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/)
+    })
+    // Sin variantes ni extras en la respuesta esos paneles no se dibujan
+    expect(screen.getByText('Top 10 productos por ingreso')).toBeInTheDocument()
+    expect(screen.queryByText('Mix por variante')).not.toBeInTheDocument()
+    expect(screen.queryByText('Extras')).not.toBeInTheDocument()
   })
 })
