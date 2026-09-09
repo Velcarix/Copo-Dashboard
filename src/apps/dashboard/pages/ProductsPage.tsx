@@ -383,6 +383,65 @@ function uid() { return crypto.randomUUID() }
 
 // Regenera ids de un grupo de modificadores (y sus opciones) para usarlo como
 // payload de creación — evita reutilizar ids de otro producto/sucursal.
+// ── Puente entre el shape del backend y el del editor ────────────────────────
+// El backend guarda `ingredientMode` como enum en MAYUSCULAS y los insumos de
+// una opcion como filas de IngredientAdjustment (sin nombre ni unidad); el
+// editor trabaja en minusculas y con nombre/unidad denormalizados. Sin esta
+// normalizacion al leer, reabrir un producto muestra la config de inventario
+// vacia aunque si este guardada.
+type ApiIngredientAdjustment = {
+  id?: string
+  inventoryItemId: string
+  quantity: number | string
+  name?: string
+  unit?: string
+  inventoryItem?: { name?: string; unit?: string } | null
+}
+
+export function normalizeOption(o: ModifierOptionConfig): ModifierOptionConfig {
+  const raw = (o.ingredientAdjustments ?? []) as unknown as ApiIngredientAdjustment[]
+  return {
+    ...o,
+    ingredientMode: o.ingredientMode
+      ? (o.ingredientMode.toLowerCase() as 'none' | 'multiply' | 'custom')
+      : undefined,
+    ingredientAdjustments: raw.map(adj => ({
+      id: adj.id ?? uid(),
+      inventoryItemId: adj.inventoryItemId,
+      name: adj.name ?? adj.inventoryItem?.name ?? 'Insumo',
+      quantity: Number(adj.quantity) || 0,
+      unit: adj.unit ?? inventoryUnitToShort(adj.inventoryItem?.unit ?? ''),
+    })),
+  }
+}
+
+function normalizeModifierGroups(groups: ModifierGroupConfig[]): ModifierGroupConfig[] {
+  return groups.map(g => (
+    'options' in g && Array.isArray(g.options)
+      ? { ...g, options: g.options.map(normalizeOption) }
+      : g
+  )) as ModifierGroupConfig[]
+}
+
+function normalizeProduct(p: Product): Product {
+  return { ...p, modifierGroups: normalizeModifierGroups(p.modifierGroups ?? []) }
+}
+
+// Al duplicar hacia OTRA sucursal el inventario no se puede copiar: los
+// inventoryItemId son por sucursal (igual que la receta, ver handleDuplicateToBranch).
+function stripIngredientConfig(mg: ModifierGroupConfig): ModifierGroupConfig {
+  if (!('options' in mg) || !Array.isArray(mg.options)) return mg
+  return {
+    ...mg,
+    options: mg.options.map(o => ({
+      ...o,
+      ingredientMode: 'none' as const,
+      ingredientMultiplier: undefined,
+      ingredientAdjustments: [],
+    })),
+  } as ModifierGroupConfig
+}
+
 function duplicateModifierGroup(mg: ModifierGroupConfig): ModifierGroupConfig {
   const id = uid()
   if (mg.inputType === ModifierInputType.SELECT || mg.inputType === ModifierInputType.SIZE) {
@@ -1132,6 +1191,11 @@ function ProductModal({
             ingredientMode: o.ingredientMode
               ? o.ingredientMode.toUpperCase() as 'NONE' | 'MULTIPLY' | 'CUSTOM'
               : undefined,
+            // Solo el modo "usa otros insumos" tiene lista propia. En los demas
+            // se manda vacia para que el backend borre lo que hubiera antes.
+            ingredientAdjustments: o.ingredientMode === 'custom'
+              ? (o.ingredientAdjustments ?? []).filter(a => a.quantity > 0)
+              : [],
           }))
         : undefined,
     })) as ModifierGroupConfig[]
@@ -1161,6 +1225,17 @@ function ProductModal({
     if (emptyGroup) { setError('Todos los grupos de opciones deben tener un nombre'); return }
     const emptyQty = form.ingredients.find(i => !i.quantity || Number(i.quantity) <= 0)
     if (emptyQty) { setError(`Ingresa la cantidad para "${emptyQty.name}"`); return }
+    const emptyAdj = form.modifierGroups.flatMap(g =>
+      'options' in g && g.options
+        ? g.options
+            .filter(o => o.ingredientMode === 'custom')
+            .flatMap(o => (o.ingredientAdjustments ?? []).map(a => ({ option: o.name, adj: a })))
+        : []
+    ).find(x => !(x.adj.quantity > 0))
+    if (emptyAdj) {
+      setError(`Ingresa la cantidad de "${emptyAdj.adj.name}" en la opción "${emptyAdj.option || 'sin nombre'}"`)
+      return
+    }
     if (categoryPricingMode === PricingMode.FIXED && form.basePrice === 0 && !hasRequiredPricedGroup(form.modifierGroups)) {
       setShowZeroPriceModal(true)
       return
@@ -1642,7 +1717,7 @@ export function ProductsPage() {
     // active=all para poder encontrarlos y reactivarlos si fue un error.
     const activeParam = showInactive ? 'all' : 'true'
     api.get<{ data: Product[] }>(`/api/v1/products?active=${activeParam}&branchId=${branchId}`)
-      .then(res => setProducts(res.data))
+      .then(res => setProducts(res.data.map(normalizeProduct)))
       .catch(() => { if (import.meta.env.DEV) setProducts(MOCK_PRODUCTS) })
       .finally(() => setLoading(false))
   }, [branchId, showInactive])
@@ -1657,10 +1732,10 @@ export function ProductsPage() {
   async function handleSave(data: Omit<Product, 'id'> & { id?: string }) {
     if (data.id) {
       const res = await api.put<{ data: Product }>(`/api/v1/products/${data.id}`, data)
-      setProducts(prev => prev.map(p => p.id === data.id ? res.data : p))
+      setProducts(prev => prev.map(p => p.id === data.id ? normalizeProduct(res.data) : p))
     } else {
       const res = await api.post<{ data: Product }>('/api/v1/products', { ...data, branchId: branchId ?? '' })
-      setProducts(prev => [...prev, res.data])
+      setProducts(prev => [...prev, normalizeProduct(res.data)])
     }
   }
 
@@ -1725,7 +1800,7 @@ export function ProductsPage() {
           category: p.category,
           basePrice: p.basePrice,
           active: p.active,
-          modifierGroups: p.modifierGroups.map(duplicateModifierGroup),
+          modifierGroups: p.modifierGroups.map(mg => stripIngredientConfig(duplicateModifierGroup(mg))),
           variants: (p.variants ?? []).map(v => ({ ...v, id: uid() })),
           ...(p.maxFlavors !== undefined ? { maxFlavors: p.maxFlavors } : {}),
         })
