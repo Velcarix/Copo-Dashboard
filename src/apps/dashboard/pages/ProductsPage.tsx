@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { CircleAlert, CircleCheck, X } from 'lucide-react'
 import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
@@ -442,6 +443,99 @@ function stripIngredientConfig(mg: ModifierGroupConfig): ModifierGroupConfig {
   } as ModifierGroupConfig
 }
 
+// ── Estado visible de la config de inventario de cada opcion ────────────────
+// Sin esto no habia forma de saber, desde la UI, si un extra realmente descuenta
+// algo ni si ya quedo guardado. La "firma" resume solo la config EFECTIVA: un
+// "usa otros insumos" sin insumos con cantidad, o un multiplicador de 1, no
+// descuentan nada y cuentan como sin config.
+function inventorySignature(o: ModifierOptionConfig): string | null {
+  if (o.ingredientMode === 'custom') {
+    const adj = (o.ingredientAdjustments ?? [])
+      .filter(a => a.quantity > 0)
+      .map(a => `${a.inventoryItemId}:${a.quantity}`)
+      .sort()
+    return adj.length > 0 ? `custom|${adj.join(',')}` : null
+  }
+  if (o.ingredientMode === 'multiply') {
+    const m = o.ingredientMultiplier ?? 1
+    return m !== 1 ? `multiply|${m}` : null
+  }
+  return null
+}
+
+function describeInventory(o: ModifierOptionConfig): string {
+  if (o.ingredientMode === 'multiply') {
+    return `${o.ingredientMultiplier ?? 1}× los ingredientes del producto`
+  }
+  return (o.ingredientAdjustments ?? [])
+    .filter(a => a.quantity > 0)
+    .map(a => `${a.quantity} ${a.unit} ${a.name}`.trim())
+    .join(' · ')
+}
+
+function selectOptions(groups: ModifierGroupConfig[]): ModifierOptionConfig[] {
+  return groups.flatMap(g => ('options' in g && Array.isArray(g.options) ? g.options : []))
+}
+
+function countInventoryOptions(groups: ModifierGroupConfig[]): number {
+  return selectOptions(groups).filter(o => inventorySignature(o) !== null).length
+}
+
+// Lo que el servidor tiene guardado, por id de opcion, contra lo que se compara
+// cada fila para mostrar "Guardado" o "Sin guardar".
+const SavedInventoryContext = createContext<{ saved: Map<string, string>; hasRecipe: boolean }>({
+  saved: new Map(),
+  hasRecipe: false,
+})
+
+function savedInventorySignatures(groups: ModifierGroupConfig[]): Map<string, string> {
+  const saved = new Map<string, string>()
+  for (const o of selectOptions(groups)) {
+    const sig = inventorySignature(o)
+    if (sig) saved.set(o.id, sig)
+  }
+  return saved
+}
+
+function OptionInventoryStatus({ option }: { option: ModifierOptionConfig }) {
+  const { saved, hasRecipe } = useContext(SavedInventoryContext)
+  const sig = inventorySignature(option)
+  const savedSig = saved.get(option.id) ?? null
+
+  let tone: 'ok' | 'warn' | null = null
+  let text = ''
+  if (option.ingredientMode === 'custom' && !sig) {
+    tone = 'warn'
+    text = 'Elige al menos un insumo con cantidad — así todavía no descuenta nada'
+  } else if (option.ingredientMode === 'multiply' && sig && !hasRecipe) {
+    tone = 'warn'
+    text = 'El producto no tiene ingredientes: "usa más de lo mismo" no descontará nada. Agrégalos en la pestaña Ingredientes.'
+  } else if (sig && sig === savedSig) {
+    tone = 'ok'
+    text = `Guardado — al venderse descuenta: ${describeInventory(option)}`
+  } else if (sig) {
+    tone = 'warn'
+    text = `Sin guardar — al guardar descontará: ${describeInventory(option)}`
+  } else if (savedSig) {
+    tone = 'warn'
+    text = 'Sin guardar — al guardar dejará de descontar inventario'
+  }
+  if (!tone) return null
+
+  const Icon = tone === 'ok' ? CircleCheck : CircleAlert
+  return (
+    <p
+      className={[
+        'ml-1 flex items-start gap-1.5 text-xs leading-snug',
+        tone === 'ok' ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]',
+      ].join(' ')}
+    >
+      <Icon size={14} strokeWidth={2} className="mt-px shrink-0" aria-hidden="true" />
+      <span>{text}</span>
+    </p>
+  )
+}
+
 function duplicateModifierGroup(mg: ModifierGroupConfig): ModifierGroupConfig {
   const id = uid()
   if (mg.inputType === ModifierInputType.SELECT || mg.inputType === ModifierInputType.SIZE) {
@@ -769,7 +863,7 @@ function OptionRow({
   inventoryItems?: InventoryItem[]
 }) {
   const [showIngConfig, setShowIngConfig] = useState(false)
-  const hasIngMode = option.ingredientMode && option.ingredientMode !== 'none'
+  const hasIngMode = inventorySignature(option) !== null
 
   return (
     <div className="pl-4 space-y-1">
@@ -821,6 +915,8 @@ function OptionRow({
         )}
         <button type="button" onClick={onRemove} className="text-[var(--color-danger)] text-sm px-1">✕</button>
       </div>
+
+      {inventoryItems !== undefined && <OptionInventoryStatus option={option} />}
 
       {showIngConfig && inventoryItems !== undefined && (
         <OptionIngredientConfig
@@ -1117,6 +1213,11 @@ function ProductModal({
   const [showCustomCat, setShowCustomCat] = useState(false)
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [showZeroPriceModal, setShowZeroPriceModal] = useState(false)
+  // Lo guardado en el servidor al abrir el modal. Un producto nuevo o duplicado
+  // aun no tiene nada guardado, asi que todo lo que configure sale "Sin guardar".
+  const [savedInventory] = useState(() =>
+    existingProduct ? savedInventorySignatures(existingProduct.modifierGroups ?? []) : new Map<string, string>()
+  )
 
   useEffect(() => {
     if (!branchId) return
@@ -1487,17 +1588,19 @@ function ProductModal({
                   <p className="text-sm">Sin configuraciones — el producto se agrega directo al carrito.</p>
                 </div>
               )}
-              {form.modifierGroups.map(group => (
-                <ModifierGroupEditor
-                  key={group.id}
-                  group={group}
-                  onChange={g => updateGroup(group.id, g)}
-                  onRemove={() => removeGroup(group.id)}
-                  onDuplicate={() => duplicateGroup(group.id)}
-                  inventoryItems={inventoryItems}
-                  allGroups={form.modifierGroups}
-                />
-              ))}
+              <SavedInventoryContext.Provider value={{ saved: savedInventory, hasRecipe: form.ingredients.length > 0 }}>
+                {form.modifierGroups.map(group => (
+                  <ModifierGroupEditor
+                    key={group.id}
+                    group={group}
+                    onChange={g => updateGroup(group.id, g)}
+                    onRemove={() => removeGroup(group.id)}
+                    onDuplicate={() => duplicateGroup(group.id)}
+                    inventoryItems={inventoryItems}
+                    allGroups={form.modifierGroups}
+                  />
+                ))}
+              </SavedInventoryContext.Provider>
               <button
                 type="button"
                 onClick={addModifierGroup}
@@ -1688,6 +1791,25 @@ export function ProductsPage() {
   // Category management panel
   const [comboModal, setComboModal] = useState<'new' | ComboToEdit | null>(null)
   const [comboLoadError, setComboLoadError] = useState('')
+  const [savedNotice, setSavedNotice] = useState<{ title: string; detail?: string } | null>(null)
+
+  useEffect(() => {
+    if (!savedNotice) return
+    const t = setTimeout(() => setSavedNotice(null), 4500)
+    return () => clearTimeout(t)
+  }, [savedNotice])
+
+  // La confirmacion se arma con la RESPUESTA del servidor, no con el formulario:
+  // asi "N opciones descuentan inventario" refleja lo que de verdad quedo guardado.
+  function announceSaved(saved: Product) {
+    const n = countInventoryOptions(saved.modifierGroups ?? [])
+    setSavedNotice({
+      title: `"${saved.name}" guardado`,
+      detail: n > 0
+        ? `${n} ${n === 1 ? 'opción de extras descuenta' : 'opciones de extras descuentan'} inventario al venderse`
+        : undefined,
+    })
+  }
   const [showCatPanel, setShowCatPanel] = useState(false)
   const [newCat, setNewCat] = useState({ label: '', emoji: '⭐', color: '#6366f1' })
   const [newCatError, setNewCatError] = useState('')
@@ -1732,10 +1854,14 @@ export function ProductsPage() {
   async function handleSave(data: Omit<Product, 'id'> & { id?: string }) {
     if (data.id) {
       const res = await api.put<{ data: Product }>(`/api/v1/products/${data.id}`, data)
-      setProducts(prev => prev.map(p => p.id === data.id ? normalizeProduct(res.data) : p))
+      const saved = normalizeProduct(res.data)
+      setProducts(prev => prev.map(p => p.id === data.id ? saved : p))
+      announceSaved(saved)
     } else {
       const res = await api.post<{ data: Product }>('/api/v1/products', { ...data, branchId: branchId ?? '' })
-      setProducts(prev => [...prev, normalizeProduct(res.data)])
+      const saved = normalizeProduct(res.data)
+      setProducts(prev => [...prev, saved])
+      announceSaved(saved)
     }
   }
 
@@ -2169,7 +2295,7 @@ export function ProductsPage() {
             setComboModal(null)
             if (!branchId) return
             api.get<{ data: Product[] }>(`/api/v1/products?active=all&branchId=${branchId}`)
-              .then(res => setProducts(res.data))
+              .then(res => setProducts(res.data.map(normalizeProduct)))
               .catch(() => {})
           }}
         />
@@ -2180,6 +2306,28 @@ export function ProductsPage() {
           {comboLoadError}
         </p>
       )}
+
+      <div role="status" aria-live="polite" className="fixed bottom-4 right-4 z-50 pointer-events-none">
+        {savedNotice && (
+          <div className="toast-in pointer-events-auto flex items-start gap-3 max-w-sm rounded-xl border border-[var(--color-success)]/40 bg-[var(--color-surface)] px-4 py-3 shadow-lg">
+            <CircleCheck size={20} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--color-success)]" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">{savedNotice.title}</p>
+              {savedNotice.detail && (
+                <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">{savedNotice.detail}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSavedNotice(null)}
+              aria-label="Cerrar aviso"
+              className="-m-1 p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg)] transition-colors"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {showBranchDupModal && (
         <DuplicateToBranchModal
