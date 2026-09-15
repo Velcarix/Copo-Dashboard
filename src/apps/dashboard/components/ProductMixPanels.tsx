@@ -1,5 +1,6 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { formatCurrency, formatChartAxis } from '@/shared/lib/currency'
+import { mergeByName } from '../lib/mergeByName'
 
 // Mismo orden de colores que el selector de sucursal y las gráficas de Inicio.
 const CATEGORY_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
@@ -46,11 +47,13 @@ function Panel({ title, aside, children }: { title: string; aside?: React.ReactN
  * ve gráficas vacías.
  */
 export function ProductMixPanels({ topProducts, salesByCategory, byVariant, topFlavors, extras }: ProductMix) {
-  const products = topProducts?.slice(0, 10) ?? []
-  const categories = salesByCategory ?? []
-  const variants = byVariant ?? []
-  const flavors = topFlavors ?? []
-  const topExtras = extras?.top ?? []
+  // En "Todas las sucursales" cada sucursal aporta su propia fila: "Cono" de las
+  // tres sucursales es una sola barra.
+  const products = mergeByName(topProducts ?? [], p => p.name, ['revenue', 'units'], 'revenue').slice(0, 10)
+  const categories = mergeByName(salesByCategory ?? [], c => c.category, ['total'], 'total')
+  const variants = mergeByName(byVariant ?? [], v => v.variantName, ['revenue', 'units'], 'revenue')
+  const flavors = mergeByName(topFlavors ?? [], f => f.name, ['units'], 'units')
+  const topExtras = mergeByName(extras?.top ?? [], e => e.name, ['revenue', 'units'], 'revenue')
 
   if (products.length === 0 && categories.length === 0 && variants.length === 0 && flavors.length === 0 && topExtras.length === 0) {
     return null

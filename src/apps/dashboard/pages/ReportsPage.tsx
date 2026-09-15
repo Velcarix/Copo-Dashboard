@@ -4,6 +4,7 @@ import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
 import { ProductMixPanels, type ProductMix } from '../components/ProductMixPanels'
+import { PaymentMethodBreakdown, type PaymentMethodTotal } from '../components/PaymentMethodBreakdown'
 import { useCategoryStore } from '@/shared/store/categoryStore'
 import { useDataViewBranchParam } from '@/shared/hooks/useDataViewBranch'
 import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
@@ -15,6 +16,8 @@ interface BranchSeries { id: string; name: string; data: SalesDay[] }
 interface OrderItemRow { name: string; quantity: number }
 interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; branchName?: string; paymentMethod: string; totalAmount: string; items?: OrderItemRow[] }
 interface ProductSoldRow { name: string; category: string; price: number; quantitySold: number }
+/** GET /reports/mix: paneles de producto + desglose por forma de pago */
+type SalesMix = ProductMix & { paymentMethods?: PaymentMethodTotal[] }
 
 // Fallback label map — used when categoryStore hasn't loaded yet or is missing a key.
 const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
@@ -85,6 +88,12 @@ const MOCK_MIX: ProductMix = {
     { name: 'Fresa', units: 12 },
   ],
 }
+
+const MOCK_PAYMENT_METHODS: PaymentMethodTotal[] = [
+  { method: 'CASH',          total: 184000, count: 14 },
+  { method: 'CARD_TERMINAL', total: 152500, count: 9  },
+  { method: 'DELIVERY',      total: 48500,  count: 3  },
+]
 
 const MOCK_INVENTORY: InventoryRow[] = [
   { name: 'Vainilla',     unit: 'grams',  openingStock: 4000, purchased: 0,    consumed: 3200, waste: 0,   closingStock: 800,  costOfGoods: 19200 },
@@ -254,6 +263,9 @@ export function ReportsPage() {
   // Top de productos, categorías, variantes, sabores y extras del rango — las
   // mismas agregaciones que muestra Inicio, aquí para las fechas elegidas.
   const [mix, setMix] = useState<ProductMix>({})
+  // Cuánto entró por efectivo, tarjeta, delivery… en el rango. undefined = el
+  // backend no manda el campo y el panel no se dibuja.
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodTotal[] | undefined>(undefined)
 
   const categories = useCategoryStore(s => s.categories)
   const categoriesBranchId = useCategoryStore(s => s.branchId)
@@ -283,7 +295,7 @@ export function ReportsPage() {
         api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?${scope}`),
         // Un backend sin /reports/mix desplegado no debe tumbar el resto de la
         // pestaña: los paneles simplemente no se dibujan.
-        api.get<{ data: ProductMix }>(`/api/v1/reports/mix?${scope}`).catch(() => ({ data: {} as ProductMix })),
+        api.get<{ data: SalesMix }>(`/api/v1/reports/mix?${scope}`).catch(() => ({ data: {} as SalesMix })),
       ])
         .then(([salesRes, ordersRes, productsRes, mixRes]) => {
           setSalesDays(fillSeries(salesRes.data.data ?? [], queryFrom, queryTo, mode))
@@ -296,13 +308,15 @@ export function ReportsPage() {
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
           setProductsSold(Array.isArray(productsRes.data) ? productsRes.data : [])
-          setMix(mixRes.data ?? {})
+          const { paymentMethods: methods, ...productMix } = mixRes.data ?? {}
+          setMix(productMix)
+          setPaymentMethods(methods)
         })
         .catch(() => {
           if (import.meta.env.DEV) {
             setSalesDays(MOCK_SALES_DAYS); setBranchSeries(isAll ? MOCK_BRANCH_SERIES : [])
             setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD)
-            setMix(MOCK_MIX)
+            setMix(MOCK_MIX); setPaymentMethods(MOCK_PAYMENT_METHODS)
           }
         })
         .finally(() => setLoading(false))
@@ -534,6 +548,8 @@ export function ReportsPage() {
                   )}
                 </div>
               )}
+
+              <PaymentMethodBreakdown methods={paymentMethods} />
 
               {/* Qué se vendió en el rango — mismos paneles que Inicio */}
               <ProductMixPanels {...mix} />
