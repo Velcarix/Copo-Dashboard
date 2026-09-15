@@ -3,6 +3,7 @@ import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
+import { PaymentMethodBreakdown, type PaymentMethodTotal } from '../components/PaymentMethodBreakdown'
 import { useCategoryStore } from '@/shared/store/categoryStore'
 import { useDataViewBranchParam } from '@/shared/hooks/useDataViewBranch'
 import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
@@ -69,6 +70,12 @@ const MOCK_PRODUCTS_SOLD: ProductSoldRow[] = [
   { name: 'Malteada de vainilla', category: 'ICE_CREAM', price: 6500,  quantitySold: 34 },
   { name: 'Café americano',       category: 'COFFEE',    price: 3500,  quantitySold: 28 },
   { name: 'Pay de queso',         category: 'PASTRY',    price: 5500,  quantitySold: 12 },
+]
+
+const MOCK_PAYMENT_METHODS: PaymentMethodTotal[] = [
+  { method: 'CASH',          total: 184000, count: 14 },
+  { method: 'CARD_TERMINAL', total: 152500, count: 9  },
+  { method: 'DELIVERY',      total: 48500,  count: 3  },
 ]
 
 const MOCK_INVENTORY: InventoryRow[] = [
@@ -239,6 +246,9 @@ export function ReportsPage() {
   const [inventory, setInventory] = useState<InventoryRow[]>([])
 
   const [productsSold, setProductsSold] = useState<ProductSoldRow[]>([])
+  // Cuánto entró por efectivo, tarjeta, delivery… en el rango. undefined = el
+  // backend no manda el campo y el panel no se dibuja.
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodTotal[] | undefined>(undefined)
 
   const categories = useCategoryStore(s => s.categories)
   const categoriesBranchId = useCategoryStore(s => s.branchId)
@@ -266,8 +276,12 @@ export function ReportsPage() {
         ),
         api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?${scope}&page=${ordersPage}&limit=20`),
         api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?${scope}`),
+        // Un backend sin /reports/mix desplegado no debe tumbar el resto de la
+        // pestaña: el panel de forma de pago simplemente no se dibuja.
+        api.get<{ data: { paymentMethods?: PaymentMethodTotal[] } }>(`/api/v1/reports/mix?${scope}`)
+          .catch(() => ({ data: {} as { paymentMethods?: PaymentMethodTotal[] } })),
       ])
-        .then(([salesRes, ordersRes, productsRes]) => {
+        .then(([salesRes, ordersRes, productsRes, mixRes]) => {
           setSalesDays(fillSeries(salesRes.data.data ?? [], queryFrom, queryTo, mode))
           setBranchSeries(
             (salesRes.data.branches ?? []).map(b => ({
@@ -278,11 +292,13 @@ export function ReportsPage() {
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
           setProductsSold(Array.isArray(productsRes.data) ? productsRes.data : [])
+          setPaymentMethods(mixRes.data?.paymentMethods)
         })
         .catch(() => {
           if (import.meta.env.DEV) {
             setSalesDays(MOCK_SALES_DAYS); setBranchSeries(isAll ? MOCK_BRANCH_SERIES : [])
             setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD)
+            setPaymentMethods(MOCK_PAYMENT_METHODS)
           }
         })
         .finally(() => setLoading(false))
@@ -495,6 +511,8 @@ export function ReportsPage() {
                   )}
                 </div>
               )}
+
+              <PaymentMethodBreakdown methods={paymentMethods} />
 
               <ReportTable
                 columns={orderColumns}

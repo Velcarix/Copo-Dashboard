@@ -75,4 +75,25 @@ describe('ReportsPage', () => {
     // Si las sucursales cobran distinto, el precio sale como rango
     expect(screen.getByText(/\$65\.00 – \$70\.00/)).toBeInTheDocument()
   })
+
+  it('muestra cuánto entró por efectivo, tarjeta y delivery en el rango', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/reports/mix')) {
+        return { data: { paymentMethods: [
+          { method: 'CARD_TERMINAL', total: 58500, count: 3 },
+          { method: 'CASH',          total: 40000, count: 2 },
+        ] } }
+      }
+      if (url.includes('/orders')) return { data: [], total: 0 }
+      return { data: [] }
+    })
+
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+
+    const cash = await screen.findByTestId('payment-cash')
+    expect(cash).toHaveTextContent('$400.00')
+    expect(screen.getByTestId('payment-card')).toHaveTextContent('$585.00')
+    // Delivery se muestra aunque ese día no hubo pedidos por plataforma
+    expect(screen.getByTestId('payment-delivery')).toHaveTextContent('$0.00')
+  })
 })
