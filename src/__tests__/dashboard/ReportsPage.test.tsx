@@ -67,6 +67,32 @@ describe('ReportsPage', () => {
     })
   })
 
+  it('junta en una fila el mismo producto de varias sucursales', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/reports/products')) {
+        return {
+          data: [
+            { name: 'Cono', category: 'Helados', price: 6500, quantitySold: 148 },
+            { name: 'Vaso', category: 'Helados', price: 6500, quantitySold: 102 },
+            { name: 'cono ', category: 'Helados', price: 7000, quantitySold: 16 },
+            { name: 'vaso', category: 'Helados', price: 6500, quantitySold: 15 },
+          ],
+        }
+      }
+      if (url.includes('/orders')) return { data: [], total: 0 }
+      return { data: [] }
+    })
+
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+
+    await waitFor(() => expect(screen.getByText('164')).toBeInTheDocument())
+    expect(screen.getAllByText(/^cono$/i)).toHaveLength(1)
+    expect(screen.getAllByText(/^vaso$/i)).toHaveLength(1)
+    expect(screen.getByText('117')).toBeInTheDocument()
+    // Si las sucursales cobran distinto, el precio sale como rango
+    expect(screen.getByText(/\$65\.00 – \$70\.00/)).toBeInTheDocument()
+  })
+
   it('muestra los paneles de mix — los mismos que Inicio — en la pestaña Ventas', async () => {
     render(<MemoryRouter><ReportsPage /></MemoryRouter>)
     await waitFor(() => {

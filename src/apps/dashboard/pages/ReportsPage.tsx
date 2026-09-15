@@ -8,6 +8,7 @@ import { PaymentMethodBreakdown, type PaymentMethodTotal } from '../components/P
 import { useCategoryStore } from '@/shared/store/categoryStore'
 import { useDataViewBranchParam } from '@/shared/hooks/useDataViewBranch'
 import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
+import { groupByName } from '../lib/mergeByName'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -192,13 +193,26 @@ function formatOrderRows(rows: OrderRow[]): Record<string, string | number>[] {
   }))
 }
 
+/**
+ * En "Todas las sucursales" llega una fila por producto de cada sucursal y
+ * "Cono" salía tres veces: se juntan por nombre y se suman los vendidos. Si
+ * las sucursales cobran distinto, el precio se muestra como rango.
+ */
 function formatProductRows(rows: ProductSoldRow[], categories: { key: string; label: string }[]): Record<string, string | number>[] {
-  return rows.map(r => ({
-    name: r.name,
-    category: resolveCategoryLabel(r.category, categories),
-    price: formatCurrency(r.price),
-    quantitySold: r.quantitySold,
-  }))
+  return groupByName(rows, r => r.name)
+    .map(group => {
+      const base = group.reduce((best, r) => (r.quantitySold > best.quantitySold ? r : best))
+      const prices = group.map(r => r.price)
+      const minPrice = Math.min(...prices)
+      const maxPrice = Math.max(...prices)
+      return {
+        name: base.name,
+        category: resolveCategoryLabel(base.category, categories),
+        price: minPrice === maxPrice ? formatCurrency(minPrice) : `${formatCurrency(minPrice)} – ${formatCurrency(maxPrice)}`,
+        quantitySold: group.reduce((s, r) => s + r.quantitySold, 0),
+      }
+    })
+    .sort((a, b) => b.quantitySold - a.quantitySold)
 }
 
 /** Rellena con ceros los días sin ventas del rango para que la línea sea continua */
@@ -358,6 +372,8 @@ export function ReportsPage() {
 
   const orderColumns   = isAll ? [BRANCH_COLUMN, ...ORDER_COLUMNS] : ORDER_COLUMNS
   const inventoryColumns = isAll ? [INVENTORY_COLUMNS[0], BRANCH_COLUMN, ...INVENTORY_COLUMNS.slice(1)] : INVENTORY_COLUMNS
+
+  const productRows = formatProductRows(productsSold, categories)
 
   const periodTotal  = sumTotal(salesDays)
   const periodOrders = sumCount(salesDays)
@@ -566,8 +582,8 @@ export function ReportsPage() {
                 <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-2">Productos vendidos</h2>
                 <ReportTable
                   columns={PRODUCT_COLUMNS}
-                  data={formatProductRows(productsSold, categories)}
-                  total={productsSold.length}
+                  data={productRows}
+                  total={productRows.length}
                   page={1}
                   onPageChange={() => {}}
                 />
