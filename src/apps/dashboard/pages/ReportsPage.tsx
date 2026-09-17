@@ -153,6 +153,34 @@ function daysAgo(n: number): string {
   return isoDate(d)
 }
 
+/**
+ * Semana natural (lunes–domingo) en la que cae hoy. Antes el preset era un
+ * rolling de 7 días, así que un miércoles el "semana" iba de jueves a miércoles
+ * y mezclaba dos semanas distintas.
+ */
+function currentWeek(): [string, string] {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  // getDay(): 0 = domingo. El domingo cierra la semana, no la abre.
+  const backToMonday = start.getDay() === 0 ? 6 : start.getDay() - 1
+  start.setDate(start.getDate() - backToMonday)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 6)
+  return [isoDate(start), isoDate(end)]
+}
+
+/**
+ * Mes natural en curso: agosto es del 1 al 31 de agosto, no los últimos 30
+ * días. El día 0 del mes siguiente es el último del mes actual, así que esto
+ * respeta meses de 28, 29, 30 y 31 días sin casos especiales.
+ */
+function currentMonth(): [string, string] {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return [isoDate(start), isoDate(end)]
+}
+
 /** Mueve una fecha 'YYYY-MM-DD' n días — sirve para las flechas ‹ › del modo día */
 function shiftDay(iso: string, delta: number): string {
   const [y, m, d] = iso.split('-').map(Number)
@@ -253,10 +281,12 @@ export function ReportsPage() {
 
   // ── Selección de fechas: un día concreto o un rango ──
   const today = isoDate(new Date())
+  const [weekFrom, weekTo] = currentWeek()
+  const [monthFrom, monthTo] = currentMonth()
   const [mode, setMode] = useState<RangeMode>('range')
   const [day, setDay] = useState(() => isoDate(new Date()))
-  const [from, setFrom] = useState(() => daysAgo(6))
-  const [to, setTo] = useState(() => isoDate(new Date()))
+  const [from, setFrom] = useState(() => currentWeek()[0])
+  const [to, setTo] = useState(() => currentWeek()[1])
 
   // Si el usuario invierte el rango (from > to) se consulta igual en vez de
   // devolver cero resultados sin explicación.
@@ -355,15 +385,15 @@ export function ReportsPage() {
   const PRESETS: { id: string; label: string; apply: () => void }[] = [
     { id: 'today',     label: 'Hoy',      apply: () => { setMode('day');   setDay(today) } },
     { id: 'yesterday', label: 'Ayer',     apply: () => { setMode('day');   setDay(daysAgo(1)) } },
-    { id: '7d',        label: '7 días',   apply: () => { setMode('range'); setFrom(daysAgo(6));  setTo(today) } },
-    { id: '30d',       label: '30 días',  apply: () => { setMode('range'); setFrom(daysAgo(29)); setTo(today) } },
+    { id: 'week',      label: 'Esta semana', apply: () => { setMode('range'); setFrom(weekFrom);  setTo(weekTo)  } },
+    { id: 'month',     label: 'Este mes',    apply: () => { setMode('range'); setFrom(monthFrom); setTo(monthTo) } },
   ]
 
   const activePreset =
     mode === 'day'
       ? (day === today ? 'today' : day === daysAgo(1) ? 'yesterday' : null)
-      : to === today && from === daysAgo(6) ? '7d'
-      : to === today && from === daysAgo(29) ? '30d'
+      : from === weekFrom  && to === weekTo  ? 'week'
+      : from === monthFrom && to === monthTo ? 'month'
       : null
 
   const rangeLabel = mode === 'day'

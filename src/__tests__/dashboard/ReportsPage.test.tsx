@@ -58,6 +58,59 @@ describe('ReportsPage', () => {
     expect(screen.getByLabelText('Día siguiente')).not.toBeDisabled()
   })
 
+  // El rango por defecto y el preset "Esta semana" deben ser la semana natural
+  // lunes-domingo, no un rolling de 7 dias que mezcla dos semanas.
+  describe('rangos naturales de semana y mes', () => {
+    afterEach(() => { vi.useRealTimers() })
+
+    function inputs() {
+      return {
+        from: screen.getByLabelText('Desde') as HTMLInputElement,
+        to: screen.getByLabelText('Hasta') as HTMLInputElement,
+      }
+    }
+
+    // Un miercoles cualquiera y un domingo — el domingo es el caso borde, porque
+    // getDay() lo devuelve como 0 y cierra la semana en vez de abrirla.
+    const CASES = [
+      { label: 'miércoles', now: new Date(2026, 7, 12, 15, 0, 0), week: ['2026-08-10', '2026-08-16'] },
+      { label: 'domingo',   now: new Date(2026, 7, 16, 15, 0, 0), week: ['2026-08-10', '2026-08-16'] },
+    ]
+
+    for (const c of CASES) {
+      it(`abre en la semana lunes-domingo cuando hoy es ${c.label}`, async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true })
+        vi.setSystemTime(c.now)
+        render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+        await waitFor(() => screen.getByLabelText('Desde'))
+        const { from, to } = inputs()
+        expect([from.value, to.value]).toEqual(c.week)
+      })
+    }
+
+    it('"Este mes" cubre el mes natural completo, no 30 días', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.setSystemTime(new Date(2026, 7, 12, 15, 0, 0)) // agosto, 31 días
+      render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+      fireEvent.click(await screen.findByText('Este mes'))
+      await waitFor(() => {
+        const { from, to } = inputs()
+        expect([from.value, to.value]).toEqual(['2026-08-01', '2026-08-31'])
+      })
+    })
+
+    it('"Este mes" respeta un mes corto como febrero', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.setSystemTime(new Date(2026, 1, 10, 15, 0, 0)) // febrero 2026, 28 días
+      render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+      fireEvent.click(await screen.findByText('Este mes'))
+      await waitFor(() => {
+        const { from, to } = inputs()
+        expect([from.value, to.value]).toEqual(['2026-02-01', '2026-02-28'])
+      })
+    })
+  })
+
   it('renders productos vendidos table with mock data on Ventas tab', async () => {
     render(<MemoryRouter><ReportsPage /></MemoryRouter>)
     await waitFor(() => {
