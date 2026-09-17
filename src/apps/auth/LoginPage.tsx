@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/shared/store/authStore'
 import type { AvailableBranch } from '@/shared/store/authStore'
 import { CopoLogo } from '@/shared/components/CopoLogo'
+import { InstallAppBanner } from '@/shared/components/InstallAppBanner'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { api, ApiError } from '@/shared/lib/api'
 import { EmployeeRole } from '@shared-types'
@@ -127,6 +128,7 @@ export function LoginPage() {
         >
           ¿Olvidaste tu contraseña?
         </Link>
+        <InstallAppBanner variant="card" />
       </div>
     </div>
   )

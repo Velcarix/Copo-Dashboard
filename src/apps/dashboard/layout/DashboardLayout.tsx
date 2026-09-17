@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { ThemeToggle } from '@/shared/components/ThemeToggle'
 import { CopoLogo } from '@/shared/components/CopoLogo'
 import { LicenseStatusBanner } from '@/shared/components/LicenseStatusBanner'
+import { InstallAppBanner } from '@/shared/components/InstallAppBanner'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { canSelectAllBranches } from '@/shared/hooks/useDataViewBranch'
@@ -270,6 +271,7 @@ export function DashboardLayout() {
   return (
     <div className="flex flex-col h-dvh">
       <LicenseStatusBanner />
+      <InstallAppBanner />
       <div className="flex flex-1 min-h-0 bg-[var(--color-bg)]">
       {/* ── Sidebar (desktop) ─── */}
       <aside className="hidden md:flex flex-col w-56 bg-[var(--color-surface)] border-r border-[var(--color-border)]">
