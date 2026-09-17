@@ -41,6 +41,23 @@ describe('ReportsPage', () => {
     })
   })
 
+  it('permite elegir un día exacto y moverse con las flechas', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+    await waitFor(() => screen.getByText('Un día'))
+    fireEvent.click(screen.getByText('Un día'))
+
+    const input = await screen.findByLabelText('Día') as HTMLInputElement
+    const today = input.value
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+
+    // No se puede avanzar más allá de hoy
+    expect(screen.getByLabelText('Día siguiente')).toBeDisabled()
+
+    fireEvent.click(screen.getByLabelText('Día anterior'))
+    await waitFor(() => expect(input.value).not.toBe(today))
+    expect(screen.getByLabelText('Día siguiente')).not.toBeDisabled()
+  })
+
   it('renders productos vendidos table with mock data on Ventas tab', async () => {
     render(<MemoryRouter><ReportsPage /></MemoryRouter>)
     await waitFor(() => {
@@ -74,6 +91,36 @@ describe('ReportsPage', () => {
     expect(screen.getByText('117')).toBeInTheDocument()
     // Si las sucursales cobran distinto, el precio sale como rango
     expect(screen.getByText(/\$65\.00 – \$70\.00/)).toBeInTheDocument()
+  })
+
+  it('muestra los paneles de mix — los mismos que Inicio — en la pestaña Ventas', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+    await waitFor(() => {
+      expect(screen.getByText('Top 10 productos por ingreso')).toBeInTheDocument()
+      expect(screen.getByText('Ventas por categoría')).toBeInTheDocument()
+      expect(screen.getByText('Top sabores (unidades)')).toBeInTheDocument()
+    })
+  })
+
+  it('pide el mix al rango de fechas seleccionado', async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/reports/mix')) {
+        return { data: { topProducts: [{ name: 'Cono especial', revenue: 12345, units: 3 }], salesByCategory: [] } }
+      }
+      if (url.includes('/orders')) return { data: [], total: 0 }
+      return { data: [] }
+    })
+
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>)
+
+    await waitFor(() => {
+      const mixCall = vi.mocked(api.get).mock.calls.map(c => String(c[0])).find(u => u.includes('/reports/mix'))
+      expect(mixCall).toMatch(/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/)
+    })
+    // Sin variantes ni extras en la respuesta esos paneles no se dibujan
+    expect(screen.getByText('Top 10 productos por ingreso')).toBeInTheDocument()
+    expect(screen.queryByText('Mix por variante')).not.toBeInTheDocument()
+    expect(screen.queryByText('Extras')).not.toBeInTheDocument()
   })
 
   it('muestra cuánto entró por efectivo, tarjeta y delivery en el rango', async () => {

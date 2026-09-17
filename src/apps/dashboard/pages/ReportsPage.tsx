@@ -3,6 +3,7 @@ import { api } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { SalesChart } from '../components/SalesChart'
 import { ReportTable } from '../components/ReportTable'
+import { ProductMixPanels, type ProductMix } from '../components/ProductMixPanels'
 import { PaymentMethodBreakdown, type PaymentMethodTotal } from '../components/PaymentMethodBreakdown'
 import { useCategoryStore } from '@/shared/store/categoryStore'
 import { useDataViewBranchParam } from '@/shared/hooks/useDataViewBranch'
@@ -16,6 +17,8 @@ interface BranchSeries { id: string; name: string; data: SalesDay[] }
 interface OrderItemRow { name: string; quantity: number }
 interface OrderRow { orderNumber: string; createdAt: string; employeeName: string; branchName?: string; paymentMethod: string; totalAmount: string; items?: OrderItemRow[] }
 interface ProductSoldRow { name: string; category: string; price: number; quantitySold: number }
+/** GET /reports/mix: paneles de producto + desglose por forma de pago */
+type SalesMix = ProductMix & { paymentMethods?: PaymentMethodTotal[] }
 
 // Fallback label map — used when categoryStore hasn't loaded yet or is missing a key.
 const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
@@ -71,6 +74,21 @@ const MOCK_PRODUCTS_SOLD: ProductSoldRow[] = [
   { name: 'Café americano',       category: 'COFFEE',    price: 3500,  quantitySold: 28 },
   { name: 'Pay de queso',         category: 'PASTRY',    price: 5500,  quantitySold: 12 },
 ]
+
+// Mismos paneles que Inicio, con datos de ejemplo para trabajar sin backend (DEV).
+const MOCK_MIX: ProductMix = {
+  topProducts: MOCK_PRODUCTS_SOLD.map(p => ({ name: p.name, revenue: p.price * p.quantitySold, units: p.quantitySold })),
+  salesByCategory: [
+    { category: 'Helados', total: 221000 },
+    { category: 'Cafés',   total: 98000  },
+    { category: 'Pasteles', total: 66000 },
+  ],
+  topFlavors: [
+    { name: 'Vainilla', units: 34 },
+    { name: 'Chocolate', units: 21 },
+    { name: 'Fresa', units: 12 },
+  ],
+}
 
 const MOCK_PAYMENT_METHODS: PaymentMethodTotal[] = [
   { method: 'CASH',          total: 184000, count: 14 },
@@ -133,6 +151,15 @@ function daysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return isoDate(d)
+}
+
+/** Mueve una fecha 'YYYY-MM-DD' n días — sirve para las flechas ‹ › del modo día */
+function shiftDay(iso: string, delta: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + delta)
+  return isoDate(date)
 }
 
 const DATE_LABEL_FMT = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' })
@@ -225,6 +252,7 @@ export function ReportsPage() {
   const [tab, setTab] = useState<Tab>('sales')
 
   // ── Selección de fechas: un día concreto o un rango ──
+  const today = isoDate(new Date())
   const [mode, setMode] = useState<RangeMode>('range')
   const [day, setDay] = useState(() => isoDate(new Date()))
   const [from, setFrom] = useState(() => daysAgo(6))
@@ -246,6 +274,9 @@ export function ReportsPage() {
   const [inventory, setInventory] = useState<InventoryRow[]>([])
 
   const [productsSold, setProductsSold] = useState<ProductSoldRow[]>([])
+  // Top de productos, categorías, variantes, sabores y extras del rango — las
+  // mismas agregaciones que muestra Inicio, aquí para las fechas elegidas.
+  const [mix, setMix] = useState<ProductMix>({})
   // Cuánto entró por efectivo, tarjeta, delivery… en el rango. undefined = el
   // backend no manda el campo y el panel no se dibuja.
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodTotal[] | undefined>(undefined)
@@ -277,9 +308,8 @@ export function ReportsPage() {
         api.get<{ data: OrderRow[]; total: number }>(`/api/v1/orders?${scope}&page=${ordersPage}&limit=20`),
         api.get<{ data: ProductSoldRow[] }>(`/api/v1/reports/products?${scope}`),
         // Un backend sin /reports/mix desplegado no debe tumbar el resto de la
-        // pestaña: el panel de forma de pago simplemente no se dibuja.
-        api.get<{ data: { paymentMethods?: PaymentMethodTotal[] } }>(`/api/v1/reports/mix?${scope}`)
-          .catch(() => ({ data: {} as { paymentMethods?: PaymentMethodTotal[] } })),
+        // pestaña: los paneles simplemente no se dibujan.
+        api.get<{ data: SalesMix }>(`/api/v1/reports/mix?${scope}`).catch(() => ({ data: {} as SalesMix })),
       ])
         .then(([salesRes, ordersRes, productsRes, mixRes]) => {
           setSalesDays(fillSeries(salesRes.data.data ?? [], queryFrom, queryTo, mode))
@@ -292,13 +322,15 @@ export function ReportsPage() {
           setOrders(ordersRes.data)
           setOrdersTotal(ordersRes.total)
           setProductsSold(Array.isArray(productsRes.data) ? productsRes.data : [])
-          setPaymentMethods(mixRes.data?.paymentMethods)
+          const { paymentMethods: methods, ...productMix } = mixRes.data ?? {}
+          setMix(productMix)
+          setPaymentMethods(methods)
         })
         .catch(() => {
           if (import.meta.env.DEV) {
             setSalesDays(MOCK_SALES_DAYS); setBranchSeries(isAll ? MOCK_BRANCH_SERIES : [])
             setOrders([]); setOrdersTotal(0); setProductsSold(MOCK_PRODUCTS_SOLD)
-            setPaymentMethods(MOCK_PAYMENT_METHODS)
+            setMix(MOCK_MIX); setPaymentMethods(MOCK_PAYMENT_METHODS)
           }
         })
         .finally(() => setLoading(false))
@@ -321,17 +353,17 @@ export function ReportsPage() {
   ]
 
   const PRESETS: { id: string; label: string; apply: () => void }[] = [
-    { id: 'today',     label: 'Hoy',      apply: () => { setMode('day');   setDay(isoDate(new Date())) } },
+    { id: 'today',     label: 'Hoy',      apply: () => { setMode('day');   setDay(today) } },
     { id: 'yesterday', label: 'Ayer',     apply: () => { setMode('day');   setDay(daysAgo(1)) } },
-    { id: '7d',        label: '7 días',   apply: () => { setMode('range'); setFrom(daysAgo(6));  setTo(isoDate(new Date())) } },
-    { id: '30d',       label: '30 días',  apply: () => { setMode('range'); setFrom(daysAgo(29)); setTo(isoDate(new Date())) } },
+    { id: '7d',        label: '7 días',   apply: () => { setMode('range'); setFrom(daysAgo(6));  setTo(today) } },
+    { id: '30d',       label: '30 días',  apply: () => { setMode('range'); setFrom(daysAgo(29)); setTo(today) } },
   ]
 
   const activePreset =
     mode === 'day'
-      ? (day === isoDate(new Date()) ? 'today' : day === daysAgo(1) ? 'yesterday' : null)
-      : to === isoDate(new Date()) && from === daysAgo(6) ? '7d'
-      : to === isoDate(new Date()) && from === daysAgo(29) ? '30d'
+      ? (day === today ? 'today' : day === daysAgo(1) ? 'yesterday' : null)
+      : to === today && from === daysAgo(6) ? '7d'
+      : to === today && from === daysAgo(29) ? '30d'
       : null
 
   const rangeLabel = mode === 'day'
@@ -347,6 +379,7 @@ export function ReportsPage() {
   const periodOrders = sumCount(salesDays)
 
   const dateInputClass = 'px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-primary)] min-h-[40px]'
+  const stepBtnClass = 'px-2.5 min-h-[40px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] text-lg leading-none transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-[var(--color-border)] disabled:hover:text-[var(--color-text-secondary)]'
 
   return (
     <div className="space-y-5">
@@ -362,7 +395,7 @@ export function ReportsPage() {
 
           {/* Día concreto vs rango de fechas */}
           <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden text-xs">
-            {([['day', 'Día'], ['range', 'Rango']] as const).map(([id, label]) => (
+            {([['day', 'Un día'], ['range', 'Rango']] as const).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -382,11 +415,31 @@ export function ReportsPage() {
 
         <div className="flex items-center gap-2 flex-wrap text-sm">
           {mode === 'day' ? (
-            <input
-              type="date" value={day} onChange={e => setDay(e.target.value)}
-              aria-label="Día"
-              className={dateInputClass}
-            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setDay(d => shiftDay(d, -1))}
+                aria-label="Día anterior"
+                className={stepBtnClass}
+              >
+                <span aria-hidden="true">‹</span>
+              </button>
+              <input
+                type="date" value={day} max={today}
+                onChange={e => { if (e.target.value) setDay(e.target.value) }}
+                aria-label="Día"
+                className={dateInputClass}
+              />
+              <button
+                type="button"
+                onClick={() => setDay(d => shiftDay(d, 1))}
+                disabled={day >= today}
+                aria-label="Día siguiente"
+                className={stepBtnClass}
+              >
+                <span aria-hidden="true">›</span>
+              </button>
+            </div>
           ) : (
             <>
               <input
@@ -513,6 +566,9 @@ export function ReportsPage() {
               )}
 
               <PaymentMethodBreakdown methods={paymentMethods} />
+
+              {/* Qué se vendió en el rango — mismos paneles que Inicio */}
+              <ProductMixPanels {...mix} />
 
               <ReportTable
                 columns={orderColumns}

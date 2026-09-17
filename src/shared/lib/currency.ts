@@ -8,6 +8,15 @@ export function formatCurrency(cents: number): string {
   return `${sign}$${intFormatted}.${dec}`
 }
 
+/** Etiqueta corta para ejes de gráficas: $250, $1.2k, $15k (recibe centavos).
+ *  Debajo de $10k lleva un decimal — redondeando a entero, dos marcas seguidas
+ *  del eje salían con la misma etiqueta ("$2k" y "$2k"). */
+export function formatChartAxis(cents: number): string {
+  const pesos = cents / 100
+  if (pesos < 1_000) return `$${pesos.toFixed(0)}`
+  return `$${(pesos / 1_000).toFixed(pesos < 10_000 ? 1 : 0)}k`
+}
+
 export function centsToPesos(cents: number): number {
   return cents / 100
 }

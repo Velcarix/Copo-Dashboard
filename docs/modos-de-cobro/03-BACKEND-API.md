@@ -148,6 +148,17 @@ Implementación: mismas agregaciones en memoria que `topProducts` —
 (incluir la relación en el query de orders del período); `extras` desde `OrderItemModifier`
 con `priceDelta > 0`. No hay panel "byPresentation": `topProducts` ya lo es (RN-01).
 
+### 5.1 Mismos paneles en Reportes (`GET /api/v1/reports/mix?branchId&from&to`)
+
+La pestaña Ventas de Reportes muestra los mismos paneles que Inicio (top de productos,
+ventas por categoría, mix por variante, top de sabores y extras) pero para el rango de
+fechas elegido — Inicio usa `period`, aquí se usan `from`/`to` como el resto de
+`/reports/*`. Respuesta = `{ data: ProductMix }` (ver `shared/types`).
+
+Las agregaciones viven en `aggregateProductMix()` (report.service.ts) y las consumen
+tanto `getDashboardData` como `getProductMixReport`, así que las dos pantallas no pueden
+divergir. En el frontend el render también es único: `ProductMixPanels.tsx`.
+
 ## 6. Checklist de compatibilidad
 
 - [ ] Payloads viejos del POS (sin campos nuevos) siguen aceptándose mientras la categoría sea FIXED.

@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { useBranchStore } from '@/shared/store/branchStore'
 import { useAuthStore } from '@/shared/store/authStore'
-import { EmployeeRole } from '@shared-types'
+import { canSelectAllBranches } from '@/shared/hooks/useDataViewBranch'
 
 // One dot color per branch index (cycles if > 5)
 const BRANCH_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899']
@@ -17,11 +17,11 @@ function BranchDot({ index, size = 8 }: { index: number; size?: number }) {
 
 export function BranchSelector() {
   const { branches, selectedId, setSelected } = useBranchStore()
-  // La vista consolidada ("Todas las sucursales") solo la soporta el backend para
-  // OWNER — su token es el único que refleja realmente TODAS las sucursales del
-  // negocio (ver requireAuth en el backend). Ocultarla para otros roles evita un
-  // 403 silencioso al elegirla.
-  const isOwner = useAuthStore(s => s.user?.role === EmployeeRole.OWNER)
+  // La vista consolidada ("Todas las sucursales") la soporta el backend para OWNER
+  // (todo el negocio) y para cualquier empleado con acceso a varias sucursales
+  // (acotada a las suyas — ver requireAuth y lib/branchScope.ts). Con una sola
+  // sucursal se oculta: no hay nada que consolidar y daría un 403 silencioso.
+  const canViewAll = useAuthStore(s => canSelectAllBranches(s.user?.role, s.availableBranches?.length ?? 0))
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -71,8 +71,8 @@ export function BranchSelector() {
 
       {open && (
         <div className="absolute left-0 top-full mt-1 z-50 min-w-[200px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden">
-          {/* Global option — solo OWNER, ver comentario arriba */}
-          {isOwner && (
+          {/* Global option — ver comentario arriba */}
+          {canViewAll && (
             <>
               <button
                 type="button"

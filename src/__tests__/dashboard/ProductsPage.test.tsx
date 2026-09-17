@@ -49,6 +49,17 @@ describe('ProductsPage', () => {
     expect(await screen.findByText(/el cajero puede vender este producto en \$0/i)).toBeInTheDocument()
   })
 
+  it('always shows the inventory status of every extra option', async () => {
+    render(<MemoryRouter><ProductsPage /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: /nuevo producto/i }))
+    await userEvent.click(screen.getByRole('button', { name: /extras/i }))
+    await userEvent.click(screen.getByRole('button', { name: /agregar grupo de opciones/i }))
+    await userEvent.click(screen.getByText('+ Agregar opción'))
+    expect(await screen.findByText(/no descuenta inventario/i)).toBeInTheDocument()
+    expect(screen.getByText(/de 1 opción descuenta inventario al venderse/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 sin descuento configurado/i)).toBeInTheDocument()
+  })
+
   it('lets the owner switch a category to VARIANTS and edit its variant scheme', async () => {
     useCategoryStore.setState({
       categories: [{ id: 'c1', key: 'helados', label: 'Helados', emoji: '🍦', color: '#6366f1', sortOrder: 0, hidden: false, pricingMode: PricingMode.FIXED }],
