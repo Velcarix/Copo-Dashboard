@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { CircleAlert, CircleCheck, X } from 'lucide-react'
+import { CircleAlert, CircleCheck, CircleMinus, X } from 'lucide-react'
 import { api, ApiError } from '@/shared/lib/api'
 import { formatCurrency } from '@/shared/lib/currency'
 import { useAuthStore } from '@/shared/store/authStore'
@@ -502,8 +502,10 @@ function OptionInventoryStatus({ option }: { option: ModifierOptionConfig }) {
   const sig = inventorySignature(option)
   const savedSig = saved.get(option.id) ?? null
 
-  let tone: 'ok' | 'warn' | null = null
-  let text = ''
+  // Siempre se muestra una linea, aunque la opcion no descuente nada: era la
+  // unica forma de distinguir "no descuenta" de "nadie lo reviso todavia".
+  let tone: 'ok' | 'warn' | 'off' = 'off'
+  let text = 'No descuenta inventario'
   if (option.ingredientMode === 'custom' && !sig) {
     tone = 'warn'
     text = 'Elige al menos un insumo con cantidad — así todavía no descuenta nada'
@@ -520,19 +522,78 @@ function OptionInventoryStatus({ option }: { option: ModifierOptionConfig }) {
     tone = 'warn'
     text = 'Sin guardar — al guardar dejará de descontar inventario'
   }
-  if (!tone) return null
 
-  const Icon = tone === 'ok' ? CircleCheck : CircleAlert
+  const Icon = tone === 'ok' ? CircleCheck : tone === 'warn' ? CircleAlert : CircleMinus
   return (
     <p
       className={[
         'ml-1 flex items-start gap-1.5 text-xs leading-snug',
-        tone === 'ok' ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]',
+        tone === 'ok'
+          ? 'text-[var(--color-success)]'
+          : tone === 'warn'
+            ? 'text-[var(--color-warning)]'
+            : 'text-[var(--color-text-muted)]',
       ].join(' ')}
     >
       <Icon size={14} strokeWidth={2} className="mt-px shrink-0" aria-hidden="true" />
       <span>{text}</span>
     </p>
+  )
+}
+
+// Resumen de toda la pestana Extras. Se muestra siempre (igual que la lista de
+// Ingredientes) para que se vea de un vistazo cuantas opciones descuentan de
+// verdad, cuantas estan sin guardar y cuantas no descuentan nada.
+function ExtrasInventorySummary({
+  groups,
+  saved,
+  hasRecipe,
+}: {
+  groups: ModifierGroupConfig[]
+  saved: Map<string, string>
+  hasRecipe: boolean
+}) {
+  const options = selectOptions(groups)
+  if (options.length === 0) return null
+
+  let savedCount = 0
+  let pendingCount = 0
+  for (const o of options) {
+    const sig = inventorySignature(o)
+    const savedSig = saved.get(o.id) ?? null
+    if (sig && sig === savedSig) savedCount++
+    else if (sig || savedSig) pendingCount++
+  }
+  const noneCount = options.length - savedCount - pendingCount
+  const deadMultiply = !hasRecipe && options.some(o => o.ingredientMode === 'multiply' && inventorySignature(o) !== null)
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 space-y-1">
+      <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+        <CircleCheck size={14} strokeWidth={2} className="shrink-0 text-[var(--color-success)]" aria-hidden="true" />
+        <span>
+          <strong>{savedCount}</strong> de {options.length} {options.length === 1 ? 'opción descuenta' : 'opciones descuentan'} inventario al venderse
+        </span>
+      </p>
+      {pendingCount > 0 && (
+        <p className="flex items-center gap-1.5 text-xs text-[var(--color-warning)]">
+          <CircleAlert size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+          <span>{pendingCount} con cambios sin guardar — presiona "Guardar producto" para aplicarlos</span>
+        </p>
+      )}
+      {noneCount > 0 && (
+        <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+          <CircleMinus size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+          <span>{noneCount} sin descuento configurado</span>
+        </p>
+      )}
+      {deadMultiply && (
+        <p className="flex items-center gap-1.5 text-xs text-[var(--color-warning)]">
+          <CircleAlert size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+          <span>Hay opciones con "usa más de lo mismo" pero el producto no tiene ingredientes: no descontarán nada.</span>
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -1580,6 +1641,11 @@ function ProductModal({
                   Este producto tiene {form.ingredients.length} ingrediente{form.ingredients.length > 1 ? 's' : ''} configurado{form.ingredients.length > 1 ? 's' : ''}. Usa el botón <strong>Inventario</strong> en cada opción para definir qué descuenta del stock cuando el cajero la elige.
                 </p>
               )}
+              <ExtrasInventorySummary
+                groups={form.modifierGroups}
+                saved={savedInventory}
+                hasRecipe={form.ingredients.length > 0}
+              />
               {form.modifierGroups.length === 0 && (
                 <div className="text-center py-8 text-[var(--color-text-muted)]">
                   <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-[var(--color-bg)] flex items-center justify-center">
