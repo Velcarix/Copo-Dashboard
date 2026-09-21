@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/shared/lib/currency'
-import { api } from '@/shared/lib/api'
+import { api, ApiError } from '@/shared/lib/api'
 import { useSingleDataViewBranchId } from '@/shared/hooks/useDataViewBranch'
 import { useVisibilityRefetch } from '@/shared/hooks/useVisibilityRefetch'
 
@@ -56,6 +56,8 @@ export function OrderHistoryPage() {
   const [filterStatus, setFilterStatus] = useState<OrderStatus | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [managerPin, setManagerPin] = useState('')
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     if (!branchId) return
@@ -99,17 +101,29 @@ export function OrderHistoryPage() {
     }
   }
 
+  function openCancel(order: HistoryOrder) {
+    setManagerPin('')
+    setCancelError(null)
+    setModal({ type: 'cancel', order })
+  }
+
+  // Cancelar exige el PIN/contraseña de un gerente; el backend decide quién puede autorizar.
+  // Si falla, el modal sigue abierto para reintentar.
   async function confirmCancel() {
-    if (modal.type !== 'cancel') return
+    if (modal.type !== 'cancel' || !managerPin) return
     setLoading(true)
+    setCancelError(null)
     try {
-      await api.post(`/api/v1/orders/${modal.order.id}/cancel`, {})
+      await api.post(`/api/v1/orders/${modal.order.id}/cancel`, { authorization: managerPin })
       setOrders(prev => prev.map(o =>
         o.id === modal.order.id ? { ...o, status: 'cancelled' } : o
       ))
+      setModal({ type: 'none' })
+    } catch (err) {
+      setCancelError(err instanceof ApiError ? err.message : 'No se pudo cancelar la orden')
+      setManagerPin('')
     } finally {
       setLoading(false)
-      setModal({ type: 'none' })
     }
   }
 
@@ -202,7 +216,7 @@ export function OrderHistoryPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={e => { e.stopPropagation(); setModal({ type: 'cancel', order }) }}
+                            onClick={e => { e.stopPropagation(); openCancel(order) }}
                             className="px-2.5 py-1 rounded-lg text-xs font-medium border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
                           >
                             Cancelar
@@ -301,6 +315,31 @@ export function OrderHistoryPage() {
                 La orden <span className="font-mono">{modal.order.orderNumber}</span> quedará marcada como cancelada.
               </p>
             </div>
+            <form
+              id="cancel-order-form"
+              onSubmit={e => { e.preventDefault(); void confirmCancel() }}
+              className="mb-5"
+            >
+              <label htmlFor="manager-pin" className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+                PIN o contraseña del gerente
+              </label>
+              <input
+                id="manager-pin"
+                type="password"
+                autoFocus
+                autoComplete="off"
+                value={managerPin}
+                onChange={e => { setManagerPin(e.target.value); setCancelError(null) }}
+                aria-invalid={cancelError ? true : undefined}
+                aria-describedby={cancelError ? 'manager-pin-error' : undefined}
+                className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+              />
+              {cancelError && (
+                <p id="manager-pin-error" role="alert" className="text-sm text-red-600 dark:text-red-400 mt-1.5">
+                  {cancelError}
+                </p>
+              )}
+            </form>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -310,9 +349,9 @@ export function OrderHistoryPage() {
                 No, volver
               </button>
               <button
-                type="button"
-                onClick={confirmCancel}
-                disabled={loading}
+                type="submit"
+                form="cancel-order-form"
+                disabled={loading || !managerPin}
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Procesando…' : 'Sí, cancelar'}
