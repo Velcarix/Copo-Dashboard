@@ -58,6 +58,7 @@ export function OrderHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [managerPin, setManagerPin] = useState('')
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [refundError, setRefundError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     if (!branchId) return
@@ -90,14 +91,18 @@ export function OrderHistoryPage() {
   async function confirmRefund() {
     if (modal.type !== 'refund') return
     setLoading(true)
+    setRefundError(null)
     try {
       await api.post(`/api/v1/orders/${modal.order.id}/refund`, {})
       setOrders(prev => prev.map(o =>
         o.id === modal.order.id ? { ...o, status: 'refunded' } : o
       ))
+      setModal({ type: 'none' })
+    } catch (err) {
+      // Sin permiso de cancelar/reembolsar, el backend lo rechaza: se avisa en vez de cerrar en silencio.
+      setRefundError(err instanceof ApiError ? err.message : 'No se pudo reembolsar la orden')
     } finally {
       setLoading(false)
-      setModal({ type: 'none' })
     }
   }
 
@@ -209,7 +214,7 @@ export function OrderHistoryPage() {
                         <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={e => { e.stopPropagation(); setModal({ type: 'refund', order }) }}
+                            onClick={e => { e.stopPropagation(); setRefundError(null); setModal({ type: 'refund', order }) }}
                             className="px-2.5 py-1 rounded-lg text-xs font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/20 transition-colors"
                           >
                             Reembolsar
@@ -276,6 +281,9 @@ export function OrderHistoryPage() {
                 Se reembolsará <strong>{formatCurrency(modal.order.total)}</strong> de la orden{' '}
                 <span className="font-mono">{modal.order.orderNumber}</span>
               </p>
+              {refundError && (
+                <p role="alert" className="text-sm text-red-600 dark:text-red-400 mt-3">{refundError}</p>
+              )}
             </div>
             <div className="flex gap-3">
               <button
