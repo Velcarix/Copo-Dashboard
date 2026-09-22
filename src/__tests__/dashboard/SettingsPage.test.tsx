@@ -41,6 +41,8 @@ describe('SettingsPage', () => {
   it('renders fiscal fields and not the old Negocio fields', async () => {
     render(<MemoryRouter><SettingsPage /></MemoryRouter>)
     await waitFor(() => expect(screen.getByText('RFC')).toBeInTheDocument())
+    expect(screen.getByText('Razón social')).toBeInTheDocument()
+    expect(screen.getByText('Dirección fiscal')).toBeInTheDocument()
     expect(screen.getByText('Régimen fiscal')).toBeInTheDocument()
     expect(screen.getByText('Datos de facturación')).toBeInTheDocument()
     expect(screen.queryByText('Nombre del negocio')).not.toBeInTheDocument()

@@ -7,6 +7,8 @@ import { LoyaltyIntegrationSection } from '@/apps/dashboard/components/LoyaltyIn
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface FiscalSettings {
+  businessName: string
+  fiscalAddress: string
   rfc: string
   taxRegime: string
   billingNotice: string
@@ -31,7 +33,7 @@ interface TablesSettings {
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 const MOCK_FISCAL: FiscalSettings = {
-  rfc: '', taxRegime: '', billingNotice: '',
+  businessName: '', fiscalAddress: '', rfc: '', taxRegime: '', billingNotice: '',
 }
 
 const MOCK_KITCHEN: KitchenSettings = {
@@ -183,6 +185,23 @@ export function SettingsPage() {
       {tab === 'fiscal' && (
         <div className="bg-[var(--color-surface)] rounded-2xl p-5 border border-[var(--color-border)] space-y-4">
           <h2 className="font-semibold text-[var(--color-text-primary)] text-sm uppercase tracking-wide">Datos fiscales</h2>
+          <Field
+            label="Razón social"
+            value={fiscal.businessName}
+            placeholder="Ej. Comercializadora Copo S.A. de C.V."
+            onChange={v => setFiscal(f => ({ ...f, businessName: v }))}
+          />
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)] block mb-1">Dirección fiscal</label>
+            <textarea
+              value={fiscal.fiscalAddress}
+              onChange={e => setFiscal(f => ({ ...f, fiscalAddress: e.target.value }))}
+              placeholder="Calle, número, colonia, ciudad, CP"
+              rows={2}
+              maxLength={200}
+              className="w-full text-sm px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] resize-none"
+            />
+          </div>
           <Field
             label="RFC"
             value={fiscal.rfc}
