@@ -40,6 +40,9 @@ interface DashboardData {
   // el backend los manda (branchId=all). Su suma cuadra con totalSales/ordersCount.
   branchTotals?: { branchId: string; name: string; total: number; orders: number }[]
   topProducts: { name: string; revenue: number; units: number }[]
+  // Descuentos del período — solo si hubo alguno. `loyalty` = premios de Copo
+  // Loyalty (no los aplicó el cajero). Ya vienen restados de totalSales.
+  discounts?: { manual: number; loyalty: number; loyaltyOrders: number }
   salesByMethod: { method: string; total: number; count: number }[]
   salesByCategory: { category: string; total: number }[]
   salesByEmployee: { name: string; total: number; orders: number }[]
@@ -50,6 +53,14 @@ interface DashboardData {
   byVariant?: { variantName: string; revenue: number; units: number }[]
   topFlavors?: { name: string; units: number }[]
   extras?: { attachRate: number; top: { name: string; revenue: number; units: number }[] }
+}
+
+/** "Ventas ya descuenta $X en premios de Copo Loyalty y $Y en descuentos del cajero. …" */
+export function discountsNote(d: { manual: number; loyalty: number }): string {
+  const parts: string[] = []
+  if (d.loyalty > 0) parts.push(`${formatCurrency(d.loyalty)} en premios de Copo Loyalty`)
+  if (d.manual > 0) parts.push(`${formatCurrency(d.manual)} en descuentos del cajero`)
+  return `Ventas ya descuenta ${parts.join(' y ')}. Los productos se muestran a precio de lista.`
 }
 
 interface SalesTargets {
@@ -267,7 +278,23 @@ export function DashboardHome() {
             subtitle={(data?.breakEvenRemaining ?? 0) <= 0 ? undefined : 'restante'}
           />
         )}
+        {data?.discounts && data.discounts.loyaltyOrders > 0 && (
+          <MetricCard
+            label="Premios Loyalty"
+            value={data.discounts.loyalty > 0 ? `-${formatCurrency(data.discounts.loyalty)}` : String(data.discounts.loyaltyOrders)}
+            subtitle={`en ${data.discounts.loyaltyOrders} ${data.discounts.loyaltyOrders === 1 ? 'orden' : 'órdenes'}`}
+          />
+        )}
       </div>
+
+      {/* Explica por qué "Ventas" no cuadra con la suma de productos: los
+          descuentos (manuales y premios de Loyalty) ya están restados de Ventas,
+          y los productos se reportan a precio de lista. */}
+      {data?.discounts && (data.discounts.manual > 0 || data.discounts.loyalty > 0) && (
+        <p className="text-xs text-[var(--color-text-muted)] -mt-2" data-testid="discounts-note">
+          {discountsNote(data.discounts)}
+        </p>
+      )}
 
       {/* ── Sales goal — una meta distinta por período (hoy/semana/mes/año), por
           sucursal. En vista consolidada ("Todas las sucursales") no hay un branchId

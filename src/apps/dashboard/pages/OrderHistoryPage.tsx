@@ -11,7 +11,12 @@ interface HistoryItem {
   name: string
   quantity: number
   unitPrice: number // centavos
+  /** Precio de la línea con extras/modificadores; si el backend no lo manda, unitPrice × quantity. */
+  lineTotal: number
 }
+
+/** Premio de Copo Loyalty aplicado en la orden (amount 0 = entregado sin descuento). */
+interface LoyaltyRewardLine { name: string; amount: number }
 
 interface HistoryOrder {
   id: string
@@ -23,6 +28,12 @@ interface HistoryOrder {
   createdAt: string
   isEdited?: boolean
   employeeName: string
+  subtotal: number
+  /** Descuento aplicado por el cajero (el total menos la parte de Loyalty). */
+  manualDiscount: number
+  loyaltyDiscount: number
+  loyaltyRewards: LoyaltyRewardLine[]
+  tip: number
 }
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -42,11 +53,38 @@ type Modal =
   | { type: 'refund'; order: HistoryOrder }
   | { type: 'cancel'; order: HistoryOrder }
 
-interface ApiOrderItem { productId: string; name: string; quantity: number; unitPrice: number }
-interface ApiOrder {
+interface ApiOrderItem { productId: string; name: string; quantity: number; unitPrice: number; lineTotal?: number }
+export interface ApiOrder {
   id: string; orderNumber: number; createdAt: string; totalAmount: number
   status: string; paymentMethod: string | null; isEdited: boolean
   employeeName: string; items: ApiOrderItem[]
+  // Desglose — un backend anterior no los manda (se tratan como 0).
+  subtotal?: number; discountAmount?: number; loyaltyDiscountAmount?: number
+  loyaltyRewards?: LoyaltyRewardLine[]; tipAmount?: number
+}
+
+export function toHistoryOrder(o: ApiOrder): HistoryOrder {
+  const items = o.items.map(i => ({
+    productId: i.productId, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice,
+    lineTotal: i.lineTotal ?? i.unitPrice * i.quantity,
+  }))
+  const loyaltyDiscount = o.loyaltyDiscountAmount ?? 0
+  return {
+    id: o.id,
+    orderNumber: `#${String(o.orderNumber).padStart(4, '0')}`,
+    items,
+    total: o.totalAmount,
+    status: o.status.toLowerCase() as OrderStatus,
+    paymentMethod: o.paymentMethod ?? '',
+    createdAt: o.createdAt,
+    isEdited: o.isEdited,
+    employeeName: o.employeeName,
+    subtotal: o.subtotal ?? items.reduce((sum, i) => sum + i.lineTotal, 0),
+    manualDiscount: Math.max(0, (o.discountAmount ?? 0) - loyaltyDiscount),
+    loyaltyDiscount,
+    loyaltyRewards: o.loyaltyRewards ?? [],
+    tip: o.tipAmount ?? 0,
+  }
 }
 
 export function OrderHistoryPage() {
@@ -62,17 +100,7 @@ export function OrderHistoryPage() {
     setLoading(true)
     api.get<{ data: ApiOrder[]; total: number }>(`/api/v1/orders?branchId=${branchId}&limit=50`)
       .then(({ data }) => {
-        setOrders(data.map(o => ({
-          id: o.id,
-          orderNumber: `#${String(o.orderNumber).padStart(4, '0')}`,
-          items: o.items.map(i => ({ productId: i.productId, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice })),
-          total: o.totalAmount,
-          status: o.status.toLowerCase() as OrderStatus,
-          paymentMethod: o.paymentMethod ?? '',
-          createdAt: o.createdAt,
-          isEdited: o.isEdited,
-          employeeName: o.employeeName,
-        })))
+        setOrders(data.map(toHistoryOrder))
       })
       .catch(() => { /* show empty list */ })
       .finally(() => setLoading(false))
@@ -188,6 +216,14 @@ export function OrderHistoryPage() {
                             Editada
                           </span>
                         )}
+                        {(order.loyaltyDiscount > 0 || order.loyaltyRewards.length > 0) && (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-xs font-medium text-amber-700 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400"
+                            title="El cliente usó un premio de Copo Loyalty en esta orden"
+                          >
+                            Premio Loyalty
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -227,9 +263,50 @@ export function OrderHistoryPage() {
                           {order.items.map(item => (
                             <div key={item.productId} className="flex justify-between text-sm">
                               <span className="text-[var(--color-text-primary)]">{item.name} <span className="text-[var(--color-text-muted)]">×{item.quantity}</span></span>
-                              <span className="font-mono text-[var(--color-text-secondary)]">{formatCurrency(item.unitPrice * item.quantity)}</span>
+                              <span className="font-mono text-[var(--color-text-secondary)]">{formatCurrency(item.lineTotal)}</span>
                             </div>
                           ))}
+                          {/* Desglose: sin él, los productos suman más que el total y
+                              parece un error. Los premios de Loyalty van aparte porque
+                              no los aplicó el cajero. */}
+                          {(order.manualDiscount > 0 || order.loyaltyDiscount > 0 || order.loyaltyRewards.length > 0 || order.tip > 0) && (
+                            <div className="pt-2 border-t border-[var(--color-border)] space-y-1" data-testid="order-breakdown">
+                              <div className="flex justify-between text-sm text-[var(--color-text-secondary)]">
+                                <span>Subtotal</span>
+                                <span className="font-mono">{formatCurrency(order.subtotal)}</span>
+                              </div>
+                              {order.manualDiscount > 0 && (
+                                <div className="flex justify-between text-sm text-[var(--color-text-secondary)]">
+                                  <span>Descuento del cajero</span>
+                                  <span className="font-mono">-{formatCurrency(order.manualDiscount)}</span>
+                                </div>
+                              )}
+                              {order.loyaltyRewards.length > 0
+                                ? order.loyaltyRewards.map((reward, index) => (
+                                    <div key={`${reward.name}-${index}`} className="flex justify-between text-sm text-amber-700 dark:text-amber-400">
+                                      <span>Premio Loyalty: {reward.name}</span>
+                                      <span className="font-mono">{reward.amount > 0 ? `-${formatCurrency(reward.amount)}` : 'Entregado'}</span>
+                                    </div>
+                                  ))
+                                : order.loyaltyDiscount > 0 && (
+                                    <div className="flex justify-between text-sm text-amber-700 dark:text-amber-400">
+                                      <span>Premio Loyalty</span>
+                                      <span className="font-mono">-{formatCurrency(order.loyaltyDiscount)}</span>
+                                    </div>
+                                  )}
+                              {order.tip > 0 && (
+                                <div className="flex justify-between text-sm text-[var(--color-text-secondary)]">
+                                  <span>Propina</span>
+                                  <span className="font-mono">+{formatCurrency(order.tip)}</span>
+                                </div>
+                              )}
+                              {(order.loyaltyDiscount > 0 || order.loyaltyRewards.length > 0) && (
+                                <p className="text-[11px] text-[var(--color-text-muted)]">
+                                  El premio lo ganó el cliente en Copo Loyalty: no es un descuento del cajero.
+                                </p>
+                              )}
+                            </div>
+                          )}
                           <div className="pt-2 border-t border-[var(--color-border)] flex justify-between text-sm font-bold">
                             <span className="text-[var(--color-text-primary)]">Total</span>
                             <span className="font-mono">{formatCurrency(order.total)}</span>
