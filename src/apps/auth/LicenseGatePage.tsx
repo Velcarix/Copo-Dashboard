@@ -36,7 +36,7 @@ async function validateLicense(body: { licenseKey: string } | { fileContent: str
   return res.data
 }
 
-function LicenseInactiva({ code }: { code: string }) {
+function LicenseInactiva({ code, onRetry }: { code: string; onRetry: () => void }) {
   const message = ERROR_MESSAGES[code] ?? 'Licencia inválida. Contacta a Copo.'
   return (
     <div className="text-center space-y-4">
@@ -55,6 +55,12 @@ function LicenseInactiva({ code }: { code: string }) {
           </a>
         </p>
       </div>
+      <button
+        onClick={onRetry}
+        className="w-full mt-6 py-3 rounded-xl bg-[var(--color-accent)] text-white font-bold text-sm hover:opacity-90"
+      >
+        Ingresar otra licencia
+      </button>
     </div>
   )
 }
@@ -128,6 +134,13 @@ export function LicenseGatePage() {
     }
   }
 
+  function handleRetry() {
+    setInactiveCode('')
+    setFieldError('')
+    setManualKey('')
+    setPageState('entry')
+  }
+
   if (pageState === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)]">
@@ -143,7 +156,7 @@ export function LicenseGatePage() {
 
         {pageState === 'inactive' ? (
           <div className="mt-8">
-            <LicenseInactiva code={inactiveCode} />
+            <LicenseInactiva code={inactiveCode} onRetry={handleRetry} />
           </div>
         ) : (
           <>
