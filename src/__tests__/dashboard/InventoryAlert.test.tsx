@@ -15,6 +15,19 @@ describe('InventoryAlert', () => {
     expect(screen.getByText('Chocolate')).toBeInTheDocument()
   })
 
+  it('shows the branch of each item in the all-branches view', () => {
+    render(
+      <MemoryRouter>
+        <InventoryAlert items={[
+          { name: 'vaso', currentStock: 0, minStock: 5, branchName: 'Gran Plaza' },
+          { name: 'vaso', currentStock: 2, minStock: 5, branchName: 'Las americas' },
+        ]} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Gran Plaza')).toBeInTheDocument()
+    expect(screen.getByText('Las americas')).toBeInTheDocument()
+  })
+
   it('renders nothing when no low stock', () => {
     const { container } = render(<MemoryRouter><InventoryAlert items={[]} /></MemoryRouter>)
     expect(container).toBeEmptyDOMElement()

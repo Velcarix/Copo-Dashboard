@@ -33,7 +33,7 @@ interface DashboardData {
   customersCount: number
   breakEvenRemaining: number
   monthlyFixedCosts: number
-  lowStockItems: { name: string; currentStock: number; minStock: number }[]
+  lowStockItems: { name: string; currentStock: number; minStock: number; branchName?: string }[]
   salesChart: { label: string; total: number; count: number }[]
   branchSalesChart: { label: string; [k: string]: number | string }[]
   // Totales reales por sucursal en la vista consolidada — presentes solo cuando

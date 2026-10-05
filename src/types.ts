@@ -199,7 +199,7 @@ export interface DashboardData {
   ordersCount: number
   customersCount: number
   breakEvenRemaining: number
-  lowStockItems: Array<{ name: string; currentStock: number; minStock: number }>
+  lowStockItems: Array<{ name: string; currentStock: number; minStock: number; branchName?: string }>
   salesChart: Array<{ label: string; total: number; count: number }>
   branchSalesChart: Array<Record<string, string | number>>
   /** Totales reales por sucursal en la vista consolidada (branchId=all). Su suma
